@@ -116,3 +116,14 @@ legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
 .ping-label { fill: #fff; paint-order: stroke; stroke: #000; stroke-width: 3px; animation: ping-fade 1.5s ease-in forwards; }
 @keyframes ping-grow { from { transform: scale(0.05); opacity: 1; } to { transform: scale(1); opacity: 0; } }
 @keyframes ping-fade { from { opacity: 1; } to { opacity: 0; } }
+
+/* Owner / players */
+.join .hint { color: var(--muted); font-size: 12px; }
+.join-notice { margin: 0; background: #5a2b2b; padding: 6px 8px; border-radius: 4px; }
+.users li.is-owner { border: 1px solid var(--accent); }
+.role-badge { color: var(--accent); }
+.control-players { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.control-players li { display: flex; align-items: center; gap: 2px; background: var(--panel-2); border-radius: 10px; padding: 0 0 0 8px; font-size: 12px; }
+.control-suggestions { display: flex; flex-wrap: wrap; gap: 4px; }
+.control-suggestions button { font-size: 12px; padding: 2px 8px; }
+.token:not(.is-controllable) { cursor: grab; }

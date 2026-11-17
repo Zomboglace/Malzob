@@ -7,6 +7,7 @@
  */
 import { clampToGrid, defaultGrid, gridDimensionsFor, tokenSize } from "./grid.ts";
 import type { AppearancePatch, ClientMessage, ErrorCode } from "./protocol.ts";
+import { NO_CONTROL, sameName } from "./permissions.ts";
 import { applyStatsPatch, cloneStats, defaultStats } from "./stats.ts";
 import type { ImageRef, TableMap, TableState, Token, TokenTemplate } from "./types.ts";
 
@@ -73,6 +74,14 @@ function applyAppearance(target: Token | TokenTemplate, changes: AppearancePatch
   if (changes.color !== undefined) target.color = changes.color;
   if (changes.image !== undefined) target.image = image(ctx, changes.image);
   if (changes.stats) target.stats = applyStatsPatch(target.stats, changes.stats);
+  if (changes.control) {
+    const players = changes.control.players ?? target.control.players;
+    target.control = {
+      everyone: changes.control.everyone ?? target.control.everyone,
+      // Trimmed, without duplicates (names are case-insensitive).
+      players: players.map((p) => p.trim()).filter((p, i, all) => all.findIndex((q) => sameName(p, q)) === i),
+    };
+  }
 }
 
 /** Applies an intent. Never mutates `state`; returns a new state or an error. */
@@ -163,6 +172,7 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
         color: tpl?.color ?? DEFAULT_TOKEN_COLOR,
         image: tpl?.image ? { ...tpl.image } : null,
         stats: tpl ? cloneStats(tpl.stats) : defaultStats(`Token ${s.tokens.length + 1}`),
+        control: structuredClone(tpl?.control ?? NO_CONTROL),
       });
       return;
     }
@@ -203,6 +213,7 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
         color: src?.color ?? DEFAULT_TOKEN_COLOR,
         image: src?.image ? { ...src.image } : null,
         stats,
+        control: structuredClone(src?.control ?? NO_CONTROL),
       });
       return;
     }

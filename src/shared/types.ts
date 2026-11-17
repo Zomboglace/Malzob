@@ -76,6 +76,15 @@ export interface TableMap {
   grid: GridSettings;
 }
 
+/**
+ * Who may move and edit a token besides the owner: named players (matched by
+ * display name, case-insensitive), or everyone.
+ */
+export interface TokenControl {
+  players: string[];
+  everyone: boolean;
+}
+
 export interface Token {
   id: string;
   mapId: string;
@@ -96,6 +105,12 @@ export interface Token {
   image: ImageRef | null;
   /** The token's own stat sheet; `stats.name` is the token's name. */
   stats: StatSheet;
+  control: TokenControl;
+  /**
+   * Set by the server in a player's view of a token they do not control: the
+   * stats are blanked (only the name is real). Never stored.
+   */
+  redacted?: true;
 }
 
 export interface TokenTemplate {
@@ -105,6 +120,8 @@ export interface TokenTemplate {
   color: string;
   image: ImageRef | null;
   stats: StatSheet;
+  /** Copied to tokens placed from this template. */
+  control: TokenControl;
 }
 
 /** The authoritative, persisted state of the table. */
@@ -117,8 +134,17 @@ export interface TableState {
   templates: TokenTemplate[];
 }
 
+/**
+ * owner: the game master, logged in with the owner username and password;
+ *        can do everything.
+ * player: anyone else (no account); can use the ruler and pings, and move and
+ *         edit the tokens they control.
+ */
+export type Role = "owner" | "player";
+
 /** A connected client. Not persisted. */
 export interface User {
   id: string;
   name: string;
+  role: Role;
 }

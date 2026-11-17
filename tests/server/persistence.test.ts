@@ -16,7 +16,7 @@ describe("server: persistence", () => {
 
   test("state survives a server restart", async () => {
     const server1 = await startTestServer(tmp.dir);
-    const { client } = await TestClient.join(server1, "Jane Doe");
+    const { client } = await TestClient.joinOwner(server1);
     const s1 = await client.apply({ type: "map.create", name: "Cave" });
     const mapId = s1.maps[0]!.id;
     await client.apply({ type: "template.create", name: "Goblin" });
@@ -30,7 +30,7 @@ describe("server: persistence", () => {
     assert.deepEqual(saved, before);
 
     const server2 = await startTestServer(tmp.dir);
-    const { client: again, welcome } = await TestClient.join(server2, "Jane Doe");
+    const { client: again, welcome } = await TestClient.joinOwner(server2);
     assert.deepEqual(welcome.state, before);
     assert.equal(welcome.state.tokens[0]!.stats.notes, "Has a key");
     await again.close();
@@ -39,18 +39,19 @@ describe("server: persistence", () => {
 
   test("uploaded images are stored by hash and survive a restart", async () => {
     const server1 = await startTestServer(tmp.dir);
+    const { client, welcome } = await TestClient.joinOwner(server1);
+    const headers = { "Content-Type": "image/png", "X-Malzob-Upload": welcome.uploadToken };
     const png = fakePng(1400, 700);
-    const res = await fetch(`${server1.url}/api/images`, { method: "POST", headers: { "Content-Type": "image/png" }, body: png });
+    const res = await fetch(`${server1.url}/api/images`, { method: "POST", headers, body: png });
     assert.equal(res.status, 201);
     const ref = (await res.json()) as ImageRef;
     assert.match(ref.hash, /^[0-9a-f]{64}$/);
     assert.deepEqual([ref.ext, ref.width, ref.height], ["png", 1400, 700]);
 
     // Same bytes -> same hash.
-    const res2 = await fetch(`${server1.url}/api/images`, { method: "POST", headers: { "Content-Type": "image/png" }, body: png });
+    const res2 = await fetch(`${server1.url}/api/images`, { method: "POST", headers, body: png });
     assert.equal(((await res2.json()) as ImageRef).hash, ref.hash);
 
-    const { client } = await TestClient.join(server1, "Jane Doe");
     const s = await client.apply({ type: "map.create", name: "Cave" });
     const withBg = await client.apply({ type: "map.setBackground", mapId: s.maps[0]!.id, image: ref.hash });
     assert.deepEqual([withBg.maps[0]!.width, withBg.maps[0]!.height, withBg.maps[0]!.grid.cols, withBg.maps[0]!.grid.rows], [1400, 700, 20, 10]);
@@ -63,7 +64,7 @@ describe("server: persistence", () => {
     assert.equal(img.headers.get("content-type"), "image/png");
     assert.deepEqual(new Uint8Array(await img.arrayBuffer()), png);
     // The image is still known to the reducer after the restart.
-    const { client: c2 } = await TestClient.join(server2, "Jane Doe");
+    const { client: c2 } = await TestClient.joinOwner(server2);
     const again = await c2.apply({ type: "map.setBackground", mapId: s.maps[0]!.id, image: ref.hash });
     assert.equal(again.maps[0]!.background?.hash, ref.hash);
     await c2.close();

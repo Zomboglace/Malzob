@@ -6,6 +6,7 @@
  * tables keep loading.
  */
 import { defaultGrid } from "./grid.ts";
+import { NO_CONTROL } from "./permissions.ts";
 import { emptyState } from "./reducer.ts";
 import type { GridSettings, TableState } from "./types.ts";
 
@@ -25,5 +26,8 @@ function migrateGrid(saved: LegacyGrid): GridSettings {
 export function migrateState(raw: TableState): TableState {
   const state: TableState = { ...emptyState(), ...raw };
   state.maps = state.maps.map((map) => ({ ...map, grid: migrateGrid(map.grid as LegacyGrid) }));
+  // Version 5: tokens and templates gained `control` (who may use them).
+  state.tokens = state.tokens.map((t) => ({ ...t, control: t.control ?? structuredClone(NO_CONTROL) }));
+  state.templates = state.templates.map((t) => ({ ...t, control: t.control ?? structuredClone(NO_CONTROL) }));
   return state;
 }

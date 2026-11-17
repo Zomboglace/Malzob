@@ -2,7 +2,8 @@
  * Plain node:http routes:
  *   GET  /                 -> the built client (public/index.html, app.js, ...)
  *   GET  /images/<file>    -> an uploaded image
- *   POST /api/images       -> upload an image (raw body), returns its ImageRef
+ *   POST /api/images       -> upload an image (raw body), returns its ImageRef;
+ *                             needs the X-Malzob-Upload header (token from `welcome`)
  */
 import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -23,10 +24,13 @@ const MIME: Record<string, string> = {
 };
 
 const UPLOAD_TYPES = new Set(Object.values(IMAGE_MIME));
+export const UPLOAD_TOKEN_HEADER = "x-malzob-upload";
 
 export interface HttpOptions {
   publicDir: string;
   images: ImageStore;
+  /** Only clients connected to the table may upload (token sent in `welcome`). */
+  isUploadAllowed(token: string): boolean;
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -63,10 +67,14 @@ function readBody(req: IncomingMessage, limit: number): Promise<Buffer | null> {
   });
 }
 
-export function createRequestHandler({ publicDir, images }: HttpOptions) {
+export function createRequestHandler({ publicDir, images, isUploadAllowed }: HttpOptions) {
   const root = normalize(publicDir);
 
   async function upload(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const token = req.headers[UPLOAD_TOKEN_HEADER];
+    if (typeof token !== "string" || !isUploadAllowed(token)) {
+      return json(res, 401, { error: "Join the table before uploading images" });
+    }
     const type = (req.headers["content-type"] ?? "").split(";")[0]!.trim();
     if (!UPLOAD_TYPES.has(type)) return json(res, 415, { error: "Only PNG, JPEG and WebP images are accepted" });
     const declared = Number(req.headers["content-length"] ?? 0);

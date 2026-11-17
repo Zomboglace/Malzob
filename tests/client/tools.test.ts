@@ -131,7 +131,7 @@ describe("UI: ping", () => {
 
   test("a ping from the server shows an expanding circle that goes away", async () => {
     ui = mountWith({}, 1, { pingDurationMs: 30 });
-    ui.app.handleServerMessage({ type: "ping", mapId: "map1", x: 40, y: 60, user: { id: "u2", name: "John Doe" } });
+    ui.app.handleServerMessage({ type: "ping", mapId: "map1", x: 40, y: 60, user: { id: "u2", name: "John Doe", role: "player" } });
     const ping = ui.$("[data-testid=ping]");
     assert.equal(ping.getAttribute("transform"), "translate(40 60)");
     assert.equal(ping.querySelector(".ping-label")!.textContent, "John Doe");
@@ -142,7 +142,7 @@ describe("UI: ping", () => {
 
   test("pings on another map are not shown", () => {
     ui = mountWith();
-    ui.app.handleServerMessage({ type: "ping", mapId: "other", x: 1, y: 1, user: { id: "u2", name: "John Doe" } });
+    ui.app.handleServerMessage({ type: "ping", mapId: "other", x: 1, y: 1, user: { id: "u2", name: "John Doe", role: "player" } });
     assert.equal(ui.root.querySelector("[data-testid=ping]"), null);
   });
 });
@@ -167,7 +167,7 @@ describe("UI: shared ruler", () => {
 
   test("other users' rulers are drawn in their colour with their name, and go away", () => {
     ui = mountWith();
-    const user = { id: "u2", name: "John Doe" };
+    const user = { id: "u2", name: "John Doe", role: "player" } as const;
     ui.app.handleServerMessage({ type: "ruler", user, ruler: { mapId: "map1", from: { x: 0, y: 0 }, to: { x: 0, y: 150 } } });
     const remote = ui.$("[data-testid=remote-ruler]");
     assert.match(remote.querySelector(".ruler-label")!.textContent ?? "", /^15 ft \(3 cells\)John Doe$/);
@@ -177,13 +177,13 @@ describe("UI: shared ruler", () => {
 
     // A user who leaves takes their ruler with them.
     ui.app.handleServerMessage({ type: "ruler", user, ruler: { mapId: "map1", from: { x: 0, y: 0 }, to: { x: 10, y: 0 } } });
-    ui.app.handleServerMessage({ type: "users", users: [{ id: "u1", name: "Jane Doe" }] });
+    ui.app.handleServerMessage({ type: "users", users: [{ id: "u1", name: "Jane Doe", role: "owner" }] });
     assert.equal(ui.root.querySelector("[data-testid=remote-ruler]"), null);
   });
 
   test("rulers on another map are not shown", () => {
     ui = mountWith();
-    ui.app.handleServerMessage({ type: "ruler", user: { id: "u2", name: "John Doe" }, ruler: { mapId: "other", from: { x: 0, y: 0 }, to: { x: 1, y: 1 } } });
+    ui.app.handleServerMessage({ type: "ruler", user: { id: "u2", name: "John Doe", role: "player" }, ruler: { mapId: "other", from: { x: 0, y: 0 }, to: { x: 1, y: 1 } } });
     assert.equal(ui.root.querySelector("[data-testid=remote-ruler]"), null);
   });
 });

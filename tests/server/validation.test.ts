@@ -12,7 +12,7 @@ describe("server: invalid messages are rejected", () => {
   before(async () => {
     tmp = makeTempDir();
     server = await startTestServer(tmp.dir);
-    client = (await TestClient.join(server, "Jane Doe")).client;
+    client = (await TestClient.joinOwner(server)).client;
     observer = (await TestClient.join(server, "John Doe")).client;
   });
 

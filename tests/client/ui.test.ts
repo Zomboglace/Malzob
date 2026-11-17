@@ -30,7 +30,7 @@ describe("UI: joining", () => {
 
   test("connected users and the connection status are shown", () => {
     ui = mount();
-    assert.deepEqual(ui.$$("[data-testid=users] li").map((li) => li.textContent), ["Jane Doe", "John Doe"]);
+    assert.deepEqual(ui.$$("[data-testid=users] li").map((li) => li.textContent), ["Jane Doe (GM)", "John Doe"]);
     assert.equal(ui.$("[data-testid=status]").textContent, "Connected");
     ui.store.update({ connection: "closed" });
     assert.match(ui.$("[data-testid=status]").textContent ?? "", /Disconnected/);

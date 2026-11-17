@@ -1,6 +1,6 @@
 # WebSocket protocol
 
-Version: **4** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
+Version: **5** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
 source of truth for the types below).
 
 - Endpoint: `ws://<host>:<port>/ws` (`wss://` behind HTTPS).
@@ -31,16 +31,35 @@ template `size` may be fractional or `null` (= the map's default); new
 
 Changes in version 4: new `ruler` message in both directions (shared ruler).
 
+Changes in version 5: owner login (`hello` with `password` or `session`),
+roles (`User.role`), token and template `control`, per-user `state` (players
+see only part of it), `welcome.uploadToken` (required to upload images),
+`welcome.session`, error codes `forbidden` and `auth_failed`.
+
+## Roles
+
+- The **owner** (game master) joins with the owner username and the password
+  (or a session token). The owner may send every message.
+- Everyone else is a **player**: they may send `user.rename`, `ping`,
+  `ruler`, and `token.move` / `token.update` for tokens they control on the
+  active map (not `changes.control`). Any other intent is refused with
+  `forbidden`.
+- A player controls a token if its `control.everyone` is true or its
+  `control.players` contains their display name (case-insensitive).
+- What a player receives in `welcome` and `state` is filtered: only the
+  active map, its tokens (with `redacted: true` and blanked `stats` for the
+  tokens they do not control — only `stats.name` is real), and no templates.
+
 ## Session flow
 
 ```
 client                                  server
   | -- connect /ws ----------------------> |
   | -- {"type":"hello","name":"Jane Doe"}> |
-  | <------------------------ welcome ---- |  (you, full state, users)
+  | <------------------------ welcome ---- |  (you, your view of the state, users)
   | <------------------------ users ------ |  (to everyone)
   | -- {"type":"token.move", ...} -------> |
-  | <------------------------ state ------ |  (to everyone, full state)
+  | <------------------------ state ------ |  (to everyone, each their own view)
   | -- {"type":"token.move", bad} -------> |
   | <------------------------ error ------ |  (to the sender only)
 ```
@@ -49,7 +68,8 @@ Until a client has sent `hello`, every other message is answered with an
 `error` (`not_ready`) and it receives no broadcasts.
 
 On reconnection the client simply sends `hello` again and receives a fresh
-`welcome` with the full state: this is how clients resync.
+`welcome`: this is how clients resync. The owner reconnects with the
+`session` token instead of the password.
 
 ---
 
@@ -58,13 +78,22 @@ On reconnection the client simply sends `hello` again and receives a fresh
 ### Session
 
 #### `hello`
-Join the table with a display name (1–80 characters). Must be the first message.
+Join the table. Must be the first message. Players send a display name (1–80
+characters). The owner sends the owner username with the `password`, or with
+the `session` token from a previous `welcome`. The owner username cannot be
+used without one of them, and a `password` with any other name is refused
+(`auth_failed`). After 5 failed owner logins from one address, owner logins
+from it are refused for a minute.
 ```json
 { "type": "hello", "name": "Jane Doe" }
+{ "type": "hello", "name": "Game Master", "password": "…" }
+{ "type": "hello", "name": "Game Master", "session": "1765432100000.k3Jv…" }
 ```
 
 #### `user.rename`
-Change your display name.
+Change your display name (players only; the owner's name is the owner
+username, and nobody may take it). Since players control tokens by name, the
+renamed player then receives their new view of the state.
 ```json
 { "type": "user.rename", "name": "Jane D." }
 ```
@@ -151,8 +180,10 @@ and for each arrow-key move.
 #### `token.update`
 Partial update of a token. `changes` may hold `size` (0.1–10 cells, or `null`
 to follow the map's `defaultTokenSize`), `color`
-(`#rrggbb`), `image` (hash or `null`) and `stats`, a partial stat sheet where
-`hp` and `abilities` are partial too. The token's name is `stats.name`.
+(`#rrggbb`), `image` (hash or `null`), `stats`, a partial stat sheet where
+`hp` and `abilities` are partial too, and `control` (owner only):
+`{ "players": ["John Doe"], "everyone": false }`, each field optional; player
+names are trimmed and de-duplicated. The token's name is `stats.name`.
 Never affects the template or other tokens.
 ```json
 {
@@ -230,20 +261,27 @@ client's current ruler in memory to show it to clients who join later.
 ## Server → client
 
 #### `welcome`
-Answer to `hello`: who you are, the full state and the connected users.
+Answer to a successful `hello`: who you are (with your `role`), the part of
+the state you may see, the connected users, and `uploadToken` (send it in the
+`X-Malzob-Upload` header to upload images; valid while this connection is
+open). The owner also gets `session`, to reconnect without the password
+(valid 30 days, or until `npm run reset`).
 ```json
 {
   "type": "welcome",
-  "protocol": 3,
-  "you": { "id": "5d0c…", "name": "Jane Doe" },
+  "protocol": 5,
+  "you": { "id": "5d0c…", "name": "Game Master", "role": "owner" },
   "state": { "rev": 12, "activeMapId": "8c1f…", "maps": [], "tokens": [], "templates": [] },
-  "users": [{ "id": "5d0c…", "name": "Jane Doe" }]
+  "users": [{ "id": "5d0c…", "name": "Game Master", "role": "owner" }, { "id": "77aa…", "name": "John Doe", "role": "player" }],
+  "uploadToken": "Zt9q…",
+  "session": "1765432100000.k3Jv…"
 }
 ```
 
 #### `state`
 Broadcast to every joined client after each accepted intent. Carries the
-**full** state; `rev` increases by one per change. (A future version may send
+full state to the owner, and each player's filtered view to players (see
+*Roles*); `rev` increases by one per change. (A future version may send
 patches instead; `rev` makes that possible without changing the model.)
 ```json
 {
@@ -275,6 +313,7 @@ patches instead; `rev` makes that possible without changing the model.)
         "size": null,
         "color": "#c0392b",
         "image": null,
+        "control": { "players": ["John Doe"], "everyone": false },
         "stats": {
           "name": "Goblin 1",
           "ac": 15,
@@ -296,14 +335,14 @@ patches instead; `rev` makes that possible without changing the model.)
 #### `users`
 Broadcast when someone joins, leaves or renames.
 ```json
-{ "type": "users", "users": [{ "id": "5d0c…", "name": "Jane Doe" }, { "id": "77aa…", "name": "John Doe" }] }
+{ "type": "users", "users": [{ "id": "5d0c…", "name": "Game Master", "role": "owner" }, { "id": "77aa…", "name": "John Doe", "role": "player" }] }
 ```
 
 #### `ping`
 Relayed to every joined client (the sender included), with who pinged.
 Clients show an expanding, fading circle for a moment.
 ```json
-{ "type": "ping", "mapId": "8c1f…", "x": 512.5, "y": 300, "user": { "id": "5d0c…", "name": "Jane Doe" } }
+{ "type": "ping", "mapId": "8c1f…", "x": 512.5, "y": 300, "user": { "id": "5d0c…", "name": "Jane Doe", "role": "player" } }
 ```
 
 #### `ruler`
@@ -312,7 +351,7 @@ Sent to every joined client **except** the one measuring, with who it is
 Right after `welcome`, a client receives one `ruler` message per ruler
 currently shown.
 ```json
-{ "type": "ruler", "user": { "id": "5d0c…", "name": "Jane Doe" }, "ruler": { "mapId": "8c1f…", "from": { "x": 140, "y": 210 }, "to": { "x": 490.5, "y": 420 } } }
+{ "type": "ruler", "user": { "id": "5d0c…", "name": "Jane Doe", "role": "player" }, "ruler": { "mapId": "8c1f…", "from": { "x": 140, "y": 210 }, "to": { "x": 490.5, "y": 420 } } }
 ```
 
 #### `error`
@@ -325,6 +364,8 @@ Sent **only** to the client whose message was rejected; the state is unchanged.
 | `invalid`   | unknown type, missing/unknown field, out of range    |
 | `not_found` | the map/token/template/image referenced does not exist |
 | `not_ready` | an intent was sent before `hello`                    |
+| `forbidden` | your role does not allow this (see *Roles*)          |
+| `auth_failed` | `hello` refused: wrong password or session, reserved name, too many failed logins; you are not joined |
 
 ```json
 { "type": "error", "code": "not_found", "message": "token d4a9 not found", "ref": "token.move" }
@@ -337,14 +378,14 @@ Sent **only** to the client whose message was rejected; the state is unchanged.
 | method | path                 | description |
 |--------|----------------------|-------------|
 | GET    | `/`, `/app.js`, …    | the built client (`build/public`) |
-| POST   | `/api/images`        | upload an image: raw bytes as the body, `Content-Type` `image/png`, `image/jpeg` or `image/webp`, at most 15 MiB. The server checks the real format from the bytes. |
+| POST   | `/api/images`        | upload an image: raw bytes as the body, `Content-Type` `image/png`, `image/jpeg` or `image/webp`, at most 15 MiB, and the `X-Malzob-Upload` header set to the `uploadToken` from `welcome`. The server checks the real format from the bytes. |
 | GET    | `/images/<hash>.<ext>` | an uploaded image (immutable, cached for a year) |
 
 Upload response (`201`):
 ```json
 { "hash": "3a7bd3e2…4f1b", "ext": "png", "width": 1400, "height": 1050 }
 ```
-Errors: `400` not a valid image, `413` too large, `415` wrong content type,
+Errors: `400` not a valid image, `401` missing or unknown upload token, `413` too large, `415` wrong content type,
 each with a JSON body `{ "error": "…" }`.
 
 Then reference the image from a message, e.g. `map.setBackground` or

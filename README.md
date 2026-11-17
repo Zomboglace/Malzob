@@ -31,14 +31,18 @@ very few dependencies, and tests for every feature.
 - **D&D 5e stat sheet** for tokens and templates: AC, HP (current/max/temp),
   speed, the six abilities with automatic modifiers, proficiency and initiative
   bonuses, conditions, notes. Edits sync live.
-- **Multi-user**: everyone picks a display name; connected users are listed;
-  clients reconnect and resync automatically; state survives a server restart.
+- **Owner and players**: the owner (game master) logs in with a username and
+  password and configures everything. Players join with just a name; they can
+  use the ruler and pings, and move and edit the tokens the owner gives them
+  (see [Owner and players](#owner-and-players)).
+- **Multi-user**: connected users are listed; clients reconnect and resync
+  automatically; state survives a server restart.
 - **Local view**: pan (drag empty space or middle-button drag) and zoom (mouse
-  wheel), per client. The sidebar can be hidden (☰ button, top left).
+  wheel), per client. The owner can hide the sidebar (☰ button, top left).
 
 Not there yet (see [docs/architecture.md](docs/architecture.md) for how they
-would fit): GM/player roles, fog of war, walls and line of sight, lighting,
-drawing, initiative tracker, dice, chat, accounts.
+would fit): fog of war, walls and line of sight, lighting, drawing,
+initiative tracker, dice, chat.
 
 ## Requirements
 
@@ -62,7 +66,21 @@ npm start
 ```
 
 This builds the client and starts the server on <http://localhost:3000>.
-Open that URL in two browsers (or two tabs), choose a name in each, and play.
+
+**The first time**, it asks in the terminal for the **owner username and
+password** (the game master's account; the password is not shown while you
+type and must be at least 8 characters). It is stored hashed in
+`data/owner.json`. Then open the URL: log in with the owner username and
+password; players open the same URL and type just a name.
+
+To change the owner username or password (for example if you forgot it):
+
+```sh
+npm run reset
+```
+
+It asks for new owner credentials and stops; maps and tokens are kept, and
+browsers logged in as the owner are signed out. Start again with `npm start`.
 
 Environment variables:
 
@@ -70,19 +88,22 @@ Environment variables:
 |------------|----------|---------|
 | `PORT`     | `3000`   | HTTP/WebSocket port |
 | `HOST`     | all interfaces | interface to bind, e.g. `127.0.0.1` |
-| `DATA_DIR` | `./data` | where `state.json` and uploaded images are stored |
+| `DATA_DIR` | `./data` | where `state.json`, `owner.json` and uploaded images are stored |
+| `MALZOB_OWNER_USERNAME`, `MALZOB_OWNER_PASSWORD` | — | owner credentials to use instead of asking, when setting up or resetting without a terminal |
 
-To play with friends on your network, share `http://<your-ip>:3000`. There is
-no authentication: anyone who can reach the server can edit the table.
+To play with friends on your network, share `http://<your-ip>:3000`. The
+connection is plain HTTP: on an untrusted network, put the server behind an
+HTTPS reverse proxy so the owner password is not sent in clear.
 
-Quick tour: create a map in the left sidebar and upload a background image.
+Quick tour (as the owner): create a map in the left sidebar and upload a background image.
 To align the grid, click **Set grid from 2 cells** in the grid settings, then
 click two opposite corners of a cell near one edge of the map and two
 opposite corners of a cell far from it (ideally in the opposite corner). Zoom
 in for precision; you can pan between clicks. Fine-tune with the number
 fields (their arrows and the up/down keys change values by 1) if needed.
 Add a template (e.g. "Goblin"), click **Place** then click on the map. Click a
-token to open its stat sheet; drag it to move it.
+token to open its stat sheet; drag it to move it. In the sheet, **Who can use
+it** gives a token to players.
 
 Map tools (buttons over the map): **Select** (default), **Ruler** (drag to
 measure; shown to everyone), **Ping** (click to show a spot to everyone).
@@ -99,8 +120,32 @@ Keyboard:
 | middle-button drag | pan, whatever the tool |
 
 Decimal fields (cell width/height, offsets, feet per cell) accept decimals
-such as `70.5` (or `70,5` where the browser's language uses a decimal comma). Editing the width of square cells keeps them square; edit the height
+such as `70.5` (or `70,5` where the browser's language uses a decimal comma).
+Editing the width of square cells keeps them square; edit the height
 afterwards for non-square cells.
+
+## Owner and players
+
+| | owner (game master) | player |
+|---|---|---|
+| joins with | the owner username **and** password | any other name, no password |
+| sidebar (maps, grid, templates) | yes | no |
+| which map is shown | chooses it (click a map in the list) | sees the map the owner shows |
+| ruler, ping | yes | yes |
+| tokens | everything | moves and edits the tokens given to them; cannot create, delete, duplicate them or save them as templates |
+| HP and stat sheets | all tokens | only the tokens they control |
+
+To give a token to players, open its sheet (or a template's sheet, so that
+every token placed from it is given too) and use **Who can use it**: click a
+connected player, type a name, or tick **Any player**. Players are recognised
+by their display name (not case-sensitive), so a player keeps their tokens
+when they come back with the same name. The owner's username is reserved:
+nobody can join with it without the password.
+
+The server enforces all of this; players never receive the maps they cannot
+see, the templates, or the stats of tokens they do not control. After 5 wrong
+passwords from the same address, owner logins from it are refused for a
+minute.
 
 ## Test
 

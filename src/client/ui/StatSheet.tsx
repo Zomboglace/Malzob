@@ -2,6 +2,7 @@
  * D&D 5e stat sheet, for a token or a template. Each edit is sent to the
  * server as a small patch (`token.update` / `template.update`).
  */
+import { canControl, isOwner } from "../../shared/permissions.ts";
 import type { AppearancePatch } from "../../shared/protocol.ts";
 import { ABILITY_LABELS, abilityModifier, CONDITIONS, formatModifier, type StatsPatch } from "../../shared/stats.ts";
 import { ABILITIES, type Token, type TokenTemplate } from "../../shared/types.ts";
@@ -9,6 +10,7 @@ import { LIMITS } from "../../shared/validate.ts";
 import type { Controller } from "../controller.ts";
 import type { ClientState, Selection } from "../store.ts";
 import { ColorField, ImagePicker, NotesField, NumberField, TextField } from "./fields.tsx";
+import { ControlEditor } from "./ControlEditor.tsx";
 import { SizeSelect } from "./SizeSelect.tsx";
 
 interface Props {
@@ -22,6 +24,9 @@ export function StatSheet({ app, state, selection }: Props) {
   const item: Token | TokenTemplate | undefined =
     selection.kind === "token" ? table?.tokens.find((t) => t.id === selection.id) : table?.templates.find((t) => t.id === selection.id);
   if (!item) return null;
+  const owner = isOwner(state.me);
+  // Players only open the sheets of tokens they control (and never templates).
+  if (!owner && (selection.kind === "template" || !canControl(state.me, item as Token))) return null;
 
   const update = (changes: AppearancePatch) =>
     selection.kind === "token"
@@ -118,7 +123,9 @@ export function StatSheet({ app, state, selection }: Props) {
         )}
       </fieldset>
 
-      <footer class="sheet-actions">
+      {owner && <ControlEditor control={item.control} users={state.users} onCommit={(control) => update({ control })} />}
+
+      {owner && <footer class="sheet-actions">
         {selection.kind === "token" ? (
           <>
             <button type="button" class="token-duplicate" onClick={() => app.send({ type: "token.duplicate", tokenId: item.id })}>
@@ -136,7 +143,7 @@ export function StatSheet({ app, state, selection }: Props) {
             Delete template
           </button>
         )}
-      </footer>
+      </footer>}
     </aside>
   );
 }

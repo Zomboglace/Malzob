@@ -14,6 +14,9 @@ export const LIMITS = {
   idLength: 64,
   tokenSize: { min: 0.1, max: 10 },
   cellSize: { min: 4, max: 1000 },
+  passwordLength: 200,
+  sessionLength: 500,
+  controlPlayers: 50,
   /** Ping coordinates, in map pixels. */
   point: { min: -1_000_000, max: 1_000_000 },
   offset: { min: -10_000, max: 10_000 },
@@ -138,12 +141,27 @@ function statsPatch(value: unknown, path: string): StatsPatch {
 
 function appearancePatch(value: unknown, path: string): AppearancePatch {
   const o = obj(value, path);
-  onlyKeys(o, ["size", "color", "image", "stats"], path);
+  onlyKeys(o, ["size", "color", "image", "stats", "control"], path);
   const out: Obj = {};
   opt(o, out, "size", () => (o.size === null ? null : num(o, "size", LIMITS.tokenSize, path)));
   opt(o, out, "color", () => color(o, "color", path));
   opt(o, out, "image", () => imageHash(o, "image", path));
   opt(o, out, "stats", () => statsPatch(o.stats, `${path}.stats`));
+  opt(o, out, "control", () => {
+    const c = obj(o.control, `${path}.control`);
+    onlyKeys(c, ["players", "everyone"], `${path}.control`);
+    const r: Obj = {};
+    opt(c, r, "everyone", () => {
+      if (typeof c.everyone !== "boolean") fail(`${path}.control.everyone must be a boolean`);
+      return c.everyone;
+    });
+    opt(c, r, "players", () => {
+      if (!Array.isArray(c.players)) fail(`${path}.control.players must be an array`);
+      if (c.players.length > LIMITS.controlPlayers) fail(`${path}.control.players has too many names`);
+      return c.players.map((_, i) => name(c.players as unknown as Obj, String(i), `${path}.control.players`));
+    });
+    return r;
+  });
   return out as AppearancePatch;
 }
 
@@ -210,7 +228,13 @@ function validate(value: unknown): ClientMessage {
   const keys = (...k: string[]) => onlyKeys(m, ["type", ...k], p);
 
   switch (type) {
-    case "hello":
+    case "hello": {
+      keys("name", "password", "session");
+      const msg: ClientMessage = { type, name: name(m, "name", p) };
+      if (m.password !== undefined) msg.password = str(m, "password", LIMITS.passwordLength, p);
+      if (m.session !== undefined) msg.session = str(m, "session", LIMITS.sessionLength, p);
+      return msg;
+    }
     case "user.rename":
       keys("name");
       return { type, name: name(m, "name", p) };

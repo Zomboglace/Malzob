@@ -14,8 +14,8 @@ export interface Controller {
   readonly store: Store;
   /** Sends an intent to the server. */
   send(msg: ClientMessage): void;
-  /** Called by the join form with the chosen display name. */
-  join(name: string): void;
+  /** Called by the join form with the display name (and the password, for the owner). */
+  join(name: string, password?: string): void;
   select(selection: Selection | null): void;
   setPlacing(placing: Placing | null): void;
   setView(mapId: string, view: View): void;
@@ -38,7 +38,11 @@ export interface ControllerDeps {
   send(msg: ClientMessage): boolean;
   uploader: Uploader;
   /** Called once a name has been chosen (main.ts opens the connection here). */
-  onJoin?(name: string): void;
+  onJoin?(name: string, password?: string): void;
+  /** Called when the server refuses the login (main.ts stops reconnecting). */
+  onAuthFailed?(): void;
+  /** Called with the owner's session token after a successful owner login. */
+  onSession?(session: string): void;
   /** How long a ping stays on screen (ms). */
   pingDurationMs?: number;
   /** Minimum delay between two ruler updates sent to the server (ms). */
@@ -68,6 +72,8 @@ export function createController({
   send,
   uploader,
   onJoin,
+  onAuthFailed,
+  onSession,
   pingDurationMs = 1900,
   rulerIntervalMs = 50,
 }: ControllerDeps): Controller {
@@ -94,9 +100,9 @@ export function createController({
     send(msg) {
       if (!send(msg)) store.update({ notice: "Not connected to the server; change not sent." });
     },
-    join(name) {
-      store.update({ name });
-      onJoin?.(name);
+    join(name, password) {
+      store.update({ name, notice: null });
+      onJoin?.(name, password);
     },
     select(selection) {
       store.update({ selection });
@@ -129,8 +135,13 @@ export function createController({
       store.update((s) => ({ sidebarCollapsed: !s.sidebarCollapsed }));
     },
     async upload(file) {
+      const token = store.get().uploadToken;
+      if (!token) {
+        store.update({ notice: "Not connected to the server; image not uploaded." });
+        return null;
+      }
       try {
-        return await uploader(file);
+        return await uploader(file, token);
       } catch (err) {
         store.update({ notice: (err as Error).message });
         return null;
@@ -142,11 +153,15 @@ export function createController({
           // remoteRulers is reset: the server sends the current ones right after welcome.
           store.update((s) => ({
             me: msg.you,
+            // The server may have changed the name (e.g. the owner's username's capitalisation).
+            name: msg.you.name,
             table: msg.state,
             users: msg.users,
+            uploadToken: msg.uploadToken,
             remoteRulers: {},
             ...pruneLocal(msg.state, s.selection, s.placing),
           }));
+          if (msg.session) onSession?.(msg.session);
           return;
         case "state":
           store.update((s) => ({
@@ -177,6 +192,12 @@ export function createController({
           return;
         }
         case "error":
+          if (msg.code === "auth_failed") {
+            // Back to the join form.
+            store.update({ name: null, me: null, table: null, notice: `Could not join: ${msg.message}` });
+            onAuthFailed?.();
+            return;
+          }
           store.update({ notice: `Server rejected ${msg.ref ?? "a message"}: ${msg.message}` });
           return;
       }

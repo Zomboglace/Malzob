@@ -24,8 +24,8 @@ export interface ConnectionOptions {
   createSocket: SocketFactory;
   onMessage(msg: ServerMessage): void;
   onStatus(status: ConnectionStatus): void;
-  /** Called on each open; returns the hello name. */
-  getName(): string;
+  /** Called on each open; returns the `hello` message to send (name, and owner credentials). */
+  getHello(): Extract<ClientMessage, { type: "hello" }>;
   minDelayMs?: number;
   maxDelayMs?: number;
 }
@@ -78,7 +78,7 @@ export class Connection {
     socket.onopen = () => {
       this.attempts = 0;
       this.options.onStatus("open");
-      socket.send(JSON.stringify({ type: "hello", name: this.options.getName() } satisfies ClientMessage));
+      socket.send(JSON.stringify(this.options.getHello()));
     };
     socket.onmessage = (ev) => {
       if (typeof ev.data !== "string") return;

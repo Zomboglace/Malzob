@@ -10,6 +10,7 @@
  * Keys typed into form fields are ignored.
  */
 import { moveBy, snapStep, tokenSize } from "../shared/grid.ts";
+import { canControl } from "../shared/permissions.ts";
 import type { Controller } from "./controller.ts";
 
 const ARROWS: Record<string, [number, number]> = {
@@ -52,7 +53,7 @@ export function handleKeyDown(app: Controller, e: KeyLike): boolean {
   const tokenId = state.selection.id;
   const token = state.table.tokens.find((t) => t.id === tokenId);
   const map = token && state.table.maps.find((m) => m.id === token.mapId);
-  if (!token || !map) return false;
+  if (!token || !map || !canControl(state.me, token)) return false;
 
   e.preventDefault(); // do not scroll the page
   const step = e.shiftKey ? 1 : snapStep(map.grid);

@@ -7,7 +7,7 @@
  */
 import type { StatsPatch } from "./stats.ts";
 import type { Point } from "./grid.ts";
-import type { GridSettings, TableState, User } from "./types.ts";
+import type { GridSettings, TableState, TokenControl, User } from "./types.ts";
 
 /** A measurement on a map, in map pixels. */
 export interface RulerLine {
@@ -21,8 +21,9 @@ export interface RulerLine {
  * 3: cellWidth/cellHeight (replace cellSize), defaultTokenSize, nullable and
  *    fractional token sizes, ping.
  * 4: shared ruler.
+ * 5: owner login and roles, token control, per-user state, upload tokens.
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const WS_PATH = "/ws";
 
 /** Appearance fields shared by token and template updates. */
@@ -33,11 +34,18 @@ export interface AppearancePatch {
   /** Hash of an uploaded image, or null to remove the image. */
   image?: string | null;
   stats?: StatsPatch;
+  /** Who besides the owner may use the token (owner only). */
+  control?: Partial<TokenControl>;
 }
 
 export type ClientMessage =
   // Session
-  | { type: "hello"; name: string }
+  /**
+   * Join the table. Players send a name only. The owner sends the owner
+   * username with the password, or with a session token from a previous
+   * `welcome` (used to reconnect without the password).
+   */
+  | { type: "hello"; name: string; password?: string; session?: string }
   | { type: "user.rename"; name: string }
   // Maps
   | { type: "map.create"; name: string }
@@ -70,12 +78,24 @@ export type ClientMessage =
 
 export type ClientMessageType = ClientMessage["type"];
 
-export type ErrorCode = "bad_json" | "invalid" | "not_found" | "not_ready";
+export type ErrorCode = "bad_json" | "invalid" | "not_found" | "not_ready" | "forbidden" | "auth_failed";
 
 export type ServerMessage =
-  /** Sent once after `hello`: who you are and the full current state. */
-  | { type: "welcome"; protocol: number; you: User; state: TableState; users: User[] }
-  /** Sent to everyone after any accepted change. */
+  /**
+   * Sent once after `hello`: who you are, the state you may see, the users.
+   * `uploadToken` authorises image uploads for this connection. `session`
+   * (owner only) lets the client reconnect without the password.
+   */
+  | {
+      type: "welcome";
+      protocol: number;
+      you: User;
+      state: TableState;
+      users: User[];
+      uploadToken: string;
+      session?: string;
+    }
+  /** Sent to everyone after any accepted change (each user gets the part they may see). */
   | { type: "state"; state: TableState }
   /** Sent to everyone when someone joins, leaves or renames. */
   | { type: "users"; users: User[] }

@@ -71,6 +71,8 @@ export interface ClientState {
   sidebarCollapsed: boolean;
   /** Last error to show to the user. */
   notice: string | null;
+  /** Authorises image uploads; from `welcome`. */
+  uploadToken: string | null;
 }
 
 export function initialClientState(): ClientState {
@@ -91,6 +93,7 @@ export function initialClientState(): ClientState {
     pings: [],
     sidebarCollapsed: false,
     notice: null,
+    uploadToken: null,
   };
 }
 

@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import type { RunningServer } from "../../src/server/app.ts";
 import { PING_INTERVAL_MS } from "../../src/server/table.ts";
+import { viewFor } from "../../src/shared/permissions.ts";
 import { PROTOCOL_VERSION } from "../../src/shared/protocol.ts";
 import { makeTempDir, startTestServer, TestClient } from "../helpers/server.ts";
 
-describe("server: live sync between two clients", () => {
+describe("server: live sync between the owner and a player", () => {
   let tmp: ReturnType<typeof makeTempDir>;
   let server: RunningServer;
   let alice: TestClient;
@@ -14,8 +15,8 @@ describe("server: live sync between two clients", () => {
   before(async () => {
     tmp = makeTempDir();
     server = await startTestServer(tmp.dir);
-    alice = (await TestClient.join(server, "Jane Doe")).client;
-    bob = (await TestClient.join(server, "John Doe")).client;
+    alice = (await TestClient.joinOwner(server)).client; // the owner (game master)
+    bob = (await TestClient.join(server, "John Doe")).client; // a player
   });
 
   after(async () => {
@@ -27,7 +28,7 @@ describe("server: live sync between two clients", () => {
 
   test("both clients see the connected users", async () => {
     const users = await alice.next("users", (m) => m.users.length === 2);
-    assert.deepEqual(users.users.map((u) => u.name).sort(), ["Jane Doe", "John Doe"]);
+    assert.deepEqual(users.users.map((u) => `${u.name}:${u.role}`).sort(), ["Game Master:owner", "John Doe:player"]);
   });
 
   test("a map created by one client is broadcast to the other", async () => {
@@ -38,19 +39,22 @@ describe("server: live sync between two clients", () => {
     assert.equal(b.state.activeMapId, b.state.maps[0]!.id);
   });
 
-  test("templates, token placement and moves are seen by everyone", async () => {
+  test("tokens placed and moved by the owner are seen by the player, without their stats", async () => {
     alice.send({ type: "template.create", name: "Goblin" });
-    const tplState = (await bob.next("state")).state;
-    await alice.next("state");
+    const tplState = (await alice.next("state")).state;
+    assert.deepEqual((await bob.next("state")).state.templates, [], "players do not see templates");
     const mapId = tplState.maps[0]!.id;
     const templateId = tplState.templates[0]!.id;
 
-    bob.send({ type: "token.create", mapId, col: 2, row: 3, templateId });
+    alice.send({ type: "token.create", mapId, col: 2, row: 3, templateId });
     const placed = (await alice.next("state")).state;
-    await bob.next("state");
+    const seenByPlayer = (await bob.next("state")).state.tokens[0]!;
     const token = placed.tokens[0]!;
     assert.equal(token.stats.name, "Goblin");
-    assert.deepEqual([token.col, token.row], [2, 3]);
+    assert.equal(token.stats.hp.max, 10);
+    assert.deepEqual([seenByPlayer.col, seenByPlayer.row, seenByPlayer.stats.name], [2, 3, "Goblin"]);
+    assert.equal(seenByPlayer.redacted, true);
+    assert.equal(seenByPlayer.stats.hp.max, 0, "the player cannot see the HP of a token they do not control");
 
     alice.send({ type: "token.move", tokenId: token.id, col: 7, row: 1 });
     const moved = (await bob.next("state")).state;
@@ -58,8 +62,22 @@ describe("server: live sync between two clients", () => {
     assert.deepEqual([moved.tokens[0]!.col, moved.tokens[0]!.row], [7, 1]);
   });
 
-  test("stat sheet edits sync live", async () => {
+  test("a player given control of a token sees its stats, moves and edits it live", async () => {
     const tokenId = server.table.getState().tokens[0]!.id;
+    bob.send({ type: "token.move", tokenId, col: 1, row: 1 });
+    assert.equal((await bob.next("error")).code, "forbidden");
+
+    alice.send({ type: "token.update", tokenId, changes: { control: { players: ["john doe"] } } });
+    await alice.next("state");
+    const mine = (await bob.next("state")).state.tokens[0]!;
+    assert.equal(mine.redacted, undefined);
+    assert.equal(mine.stats.hp.max, 10);
+
+    bob.send({ type: "token.move", tokenId, col: 4, row: 4 });
+    const moved = (await alice.next("state")).state;
+    await bob.next("state");
+    assert.deepEqual([moved.tokens[0]!.col, moved.tokens[0]!.row], [4, 4]);
+
     bob.send({ type: "token.update", tokenId, changes: { stats: { hp: { current: 3 }, conditions: ["poisoned"] } } });
     const s = (await alice.next("state")).state;
     await bob.next("state");
@@ -88,7 +106,7 @@ describe("server: live sync between two clients", () => {
     alice.send({ type: "ping", mapId, x: 120.5, y: 64 });
     const [a, b] = await Promise.all([alice.next("ping"), bob.next("ping")]);
     assert.deepEqual(a, b);
-    assert.deepEqual([b.mapId, b.x, b.y, b.user.name], [mapId, 120.5, 64, "Jane Doe"]);
+    assert.deepEqual([b.mapId, b.x, b.y, b.user.name], [mapId, 120.5, 64, "Game Master"]);
     assert.equal(server.table.getState().rev, rev, "a ping does not change the state");
 
     // Pings on unknown maps are rejected; pings faster than the limit are dropped.
@@ -126,13 +144,18 @@ describe("server: live sync between two clients", () => {
     const gone = await dave.next("ruler", (m) => m.ruler === null);
     assert.equal(gone.user.name, "Goblin 1");
     await dave.close();
-    bob = (await TestClient.join(server, "John Doe")).client;
+    bob = (await TestClient.join(server, "John Doe")).client; // a player
   });
 
-  test("a reconnecting client resyncs with the full state", async () => {
-    const { welcome } = await TestClient.join(server, "Jane Doe");
+  test("a reconnecting client resyncs with the state it may see", async () => {
+    const { client: owner, welcome } = await TestClient.joinOwner(server);
     assert.deepEqual(welcome.state, server.table.getState());
     assert.equal(welcome.protocol, PROTOCOL_VERSION);
-    assert.equal(welcome.you.name, "Jane Doe");
+    assert.deepEqual([welcome.you.name, welcome.you.role], ["Game Master", "owner"]);
+    const { client: player, welcome: w2 } = await TestClient.join(server, "Jane Doe");
+    assert.deepEqual(w2.state, viewFor(server.table.getState(), w2.you));
+    assert.equal(w2.you.role, "player");
+    await owner.close();
+    await player.close();
   });
 });

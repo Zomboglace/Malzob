@@ -85,7 +85,7 @@ describe("UI: grid settings", () => {
     assert.deepEqual(ui.sent, [{ type: "map.setGrid", mapId: "map1", grid: { subdivisions: 2 } }]);
   });
 
-  test("a split grid draws dashed sub-cell lines", () => {
+  test("a split grid draws fainter sub-cell lines", () => {
     ui = mountWithGrid({ subdivisions: 1 }, false);
     assert.equal(ui.root.querySelector("path.grid-sub"), null);
     ui.unmount();
@@ -93,7 +93,8 @@ describe("UI: grid settings", () => {
     const sub = ui.$("path.grid-sub");
     // 10x8 grid split in 2: 10 inner vertical + 8 inner horizontal lines.
     assert.equal((sub.getAttribute("d")!.match(/M/g) ?? []).length, 18);
-    assert.equal(sub.getAttribute("stroke-dasharray"), "3 3");
+    assert.equal(sub.getAttribute("stroke-dasharray"), null, "solid: dashes are slow to draw zoomed in");
+    assert.equal(Number(sub.getAttribute("stroke-opacity")), 0.35 * 0.5);
   });
 
   test("dragging on a split grid moves by sub-cells", () => {

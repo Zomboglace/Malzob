@@ -6,7 +6,7 @@ import { Store } from "../../src/client/store.ts";
 import type { ServerMessage } from "../../src/shared/protocol.ts";
 import { clampZoom, mapToScreen, panBy, screenToMap, zoomAt } from "../../src/client/view.ts";
 import { startServer } from "../../src/server/app.ts";
-import { makeTempDir, PUBLIC_DIR, startTestServer } from "../helpers/server.ts";
+import { makeTempDir, OWNER, PUBLIC_DIR, startTestServer } from "../helpers/server.ts";
 
 /** A controllable fake socket. */
 class FakeSocket implements SocketLike {
@@ -64,7 +64,7 @@ describe("connection", () => {
     const conn = new Connection({
       url: "ws://test/ws",
       createSocket: (u) => new FakeSocket(u),
-      getName: () => "Jane Doe",
+      getHello: () => ({ type: "hello", name: "Jane Doe" }),
       onStatus: (s) => statuses.push(s),
       onMessage: () => {},
       minDelayMs: 5,
@@ -92,7 +92,7 @@ describe("connection", () => {
     const conn = new Connection({
       url: "",
       createSocket: (u) => new FakeSocket(u),
-      getName: () => "",
+      getHello: () => ({ type: "hello", name: "x" }),
       onStatus: () => {},
       onMessage: () => {},
       minDelayMs: 100,
@@ -117,7 +117,7 @@ describe("connection", () => {
     const connection = new Connection({
       url: `ws://127.0.0.1:${port}/ws`,
       createSocket: (u) => new WebSocket(u) as unknown as SocketLike,
-      getName: () => "Jane Doe",
+      getHello: () => ({ type: "hello", name: OWNER.username, password: OWNER.password }),
       onStatus: (connection) => store.update({ connection }),
       onMessage: (m) => {
         messages.push(m);
@@ -140,7 +140,7 @@ describe("connection", () => {
 
       await server.close();
       await until(() => store.get().connection !== "open");
-      server = await startServer({ port, host: "127.0.0.1", dataDir: tmp.dir, publicDir: PUBLIC_DIR, saveDelayMs: 5 });
+      server = await startServer({ port, host: "127.0.0.1", dataDir: tmp.dir, publicDir: PUBLIC_DIR, saveDelayMs: 5, owner: OWNER });
       await until(() => store.get().connection === "open" && messages.filter((m) => m.type === "welcome").length === 2);
       assert.equal(store.get().table?.maps[0]?.name, "Cave");
       assert.equal(store.get().users.length, 1);

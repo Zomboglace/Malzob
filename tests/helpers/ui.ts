@@ -6,7 +6,10 @@ import { App } from "../../src/client/ui/App.tsx";
 import type { ClientMessage } from "../../src/shared/protocol.ts";
 import { defaultGrid } from "../../src/shared/grid.ts";
 import { defaultStats } from "../../src/shared/stats.ts";
-import type { TableState } from "../../src/shared/types.ts";
+import type { TableState, User } from "../../src/shared/types.ts";
+
+export const OWNER_USER: User = { id: "u1", name: "Jane Doe", role: "owner" };
+export const PLAYER_USER: User = { id: "u2", name: "John Doe", role: "player" };
 
 /** A small table: one 10x8 map with 50px cells, a Goblin template, one token. */
 export function sampleTable(): TableState {
@@ -21,8 +24,21 @@ export function sampleTable(): TableState {
     rev: 3,
     activeMapId: "map1",
     maps: [{ id: "map1", name: "Cave", background: null, width: 500, height: 400, grid }],
-    templates: [{ id: "tpl1", size: 1, color: "#00aa00", image: null, stats: goblin }],
-    tokens: [{ id: "tok1", mapId: "map1", templateId: "tpl1", col: 2, row: 3, size: 1, color: "#00aa00", image: null, stats: token }],
+    templates: [{ id: "tpl1", size: 1, color: "#00aa00", image: null, stats: goblin, control: { players: [], everyone: false } }],
+    tokens: [
+      {
+        id: "tok1",
+        mapId: "map1",
+        templateId: "tpl1",
+        col: 2,
+        row: 3,
+        size: 1,
+        color: "#00aa00",
+        image: null,
+        stats: token,
+        control: { players: [], everyone: false },
+      },
+    ],
   };
 }
 
@@ -44,8 +60,9 @@ export function mount(partial: Partial<ClientState> = {}, options: { pingDuratio
     ...initialClientState(),
     connection: "open",
     name: "Jane Doe",
-    me: { id: "u1", name: "Jane Doe" },
-    users: [{ id: "u1", name: "Jane Doe" }, { id: "u2", name: "John Doe" }],
+    me: OWNER_USER,
+    users: [OWNER_USER, PLAYER_USER],
+    uploadToken: "test-upload-token",
     table: sampleTable(),
     ...partial,
   });

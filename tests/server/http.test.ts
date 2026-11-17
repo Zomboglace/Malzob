@@ -3,23 +3,38 @@ import { after, before, describe, test } from "node:test";
 import type { RunningServer } from "../../src/server/app.ts";
 import { MAX_IMAGE_BYTES } from "../../src/server/images.ts";
 import { fakeJpeg, fakePng, fakeWebp } from "../helpers/images.ts";
-import { makeTempDir, startTestServer } from "../helpers/server.ts";
+import { makeTempDir, startTestServer, TestClient } from "../helpers/server.ts";
 
 describe("server: HTTP", () => {
   let tmp: ReturnType<typeof makeTempDir>;
   let server: RunningServer;
+  let player: TestClient;
+  let uploadToken: string;
 
   before(async () => {
     tmp = makeTempDir();
     server = await startTestServer(tmp.dir);
+    const joined = await TestClient.join(server, "Jane Doe");
+    player = joined.client;
+    uploadToken = joined.welcome.uploadToken;
   });
   after(async () => {
+    await player.close();
     await server.close();
     tmp.remove();
   });
 
-  const upload = (body: Uint8Array<ArrayBuffer>, type: string) =>
-    fetch(`${server.url}/api/images`, { method: "POST", headers: { "Content-Type": type }, body });
+  const upload = (body: Uint8Array<ArrayBuffer>, type: string, token = uploadToken) =>
+    fetch(`${server.url}/api/images`, { method: "POST", headers: { "Content-Type": type, "X-Malzob-Upload": token }, body });
+
+  test("uploads need the upload token of a connected client", async () => {
+    assert.equal((await fetch(`${server.url}/api/images`, { method: "POST", headers: { "Content-Type": "image/png" }, body: fakePng(10, 10) })).status, 401);
+    assert.equal((await upload(fakePng(10, 10), "image/png", "made-up-token")).status, 401);
+    const { client, welcome } = await TestClient.join(server, "John Doe");
+    await client.close();
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal((await upload(fakePng(10, 10), "image/png", welcome.uploadToken)).status, 401, "token dies with its connection");
+  });
 
   test("serves the built client", async () => {
     const index = await fetch(`${server.url}/`);

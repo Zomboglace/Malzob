@@ -8,6 +8,7 @@ import { WebSocketServer } from "ws";
 import { WS_PATH } from "../shared/protocol.ts";
 import { createRequestHandler } from "./http.ts";
 import { ImageStore } from "./images.ts";
+import { OwnerStore } from "./owner.ts";
 import { StateStore } from "./store.ts";
 import { Table } from "./table.ts";
 
@@ -22,6 +23,11 @@ export interface ServerOptions {
   publicDir: string;
   /** Delay before state is written to disk (ms). */
   saveDelayMs?: number;
+  /**
+   * Owner credentials to create if no owner account exists yet (used by tests
+   * and headless setups; main.ts asks interactively instead).
+   */
+  owner?: { username: string; password: string };
 }
 
 export interface RunningServer {
@@ -34,11 +40,16 @@ export interface RunningServer {
 export async function startServer(options: ServerOptions): Promise<RunningServer> {
   const images = new ImageStore(options.dataDir);
   const store = new StateStore(options.dataDir, options.saveDelayMs);
-  const table = new Table(store, images);
+  const owner = new OwnerStore(options.dataDir);
+  if (!owner.exists && options.owner) owner.set(options.owner.username, options.owner.password);
+  if (!owner.exists) throw new Error("No owner account: set one up first (npm start asks for it).");
+  const table = new Table(store, images, owner);
 
-  const http = createServer(createRequestHandler({ publicDir: options.publicDir, images }));
+  const http = createServer(
+    createRequestHandler({ publicDir: options.publicDir, images, isUploadAllowed: (token) => table.isUploadAllowed(token) }),
+  );
   const wss = new WebSocketServer({ server: http, path: WS_PATH, maxPayload: MAX_WS_MESSAGE_BYTES });
-  wss.on("connection", (socket) => table.connect(socket));
+  wss.on("connection", (socket, req) => table.connect(socket, req.socket.remoteAddress ?? "unknown"));
 
   await new Promise<void>((resolve, reject) => {
     http.once("error", reject);

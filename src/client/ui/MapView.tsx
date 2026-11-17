@@ -15,10 +15,12 @@
  */
 import { Component, createRef } from "preact";
 import { gridFromCells, type MarkedCell, type Point, rulerDistance, snapToGrid, tokenRect, tokenSize } from "../../shared/grid.ts";
+import { canControl } from "../../shared/permissions.ts";
 import { hpRatio } from "../../shared/stats.ts";
 import type { TableMap, Token } from "../../shared/types.ts";
 import type { Controller } from "../controller.ts";
 import type { ActivePing, Calibration, ClientState } from "../store.ts";
+import { type MapRect, visibleGridPaths } from "../gridRender.ts";
 import { imageUrl } from "../upload.ts";
 import { DEFAULT_VIEW, panBy, screenToMap, type View, wheelFactor, zoomAt } from "../view.ts";
 
@@ -36,9 +38,36 @@ type Gesture =
   | { kind: "token"; tokenId: string; startX: number; startY: number; moved: boolean; grabDx: number; grabDy: number }
   | { kind: "ruler" };
 
+/** Viewport size used before the real one is known (and in test DOMs without layout). */
+const FALLBACK_SIZE = { width: 1920, height: 1080 };
+
 export class MapView extends Component<Props> {
   private svg = createRef<SVGSVGElement>();
   private gesture: Gesture | null = null;
+  private size = FALLBACK_SIZE;
+  private resizeObserver: ResizeObserver | null = null;
+
+  /** Reads the SVG's size on screen; re-renders if it changed. */
+  private measure = (): void => {
+    const el = this.svg.current;
+    const width = el?.clientWidth ?? 0;
+    const height = el?.clientHeight ?? 0;
+    const next = width > 0 && height > 0 ? { width, height } : FALLBACK_SIZE;
+    if (next.width !== this.size.width || next.height !== this.size.height) {
+      this.size = next;
+      this.forceUpdate();
+    }
+  };
+
+  /** The part of the map currently on screen, in map pixels. */
+  private visibleRect(view: View): MapRect {
+    return {
+      x0: -view.x / view.zoom,
+      y0: -view.y / view.zoom,
+      x1: (this.size.width - view.x) / view.zoom,
+      y1: (this.size.height - view.y) / view.zoom,
+    };
+  }
 
   private get view(): View {
     return this.props.state.views[this.props.map.id] ?? DEFAULT_VIEW;
@@ -103,7 +132,8 @@ export class MapView extends Component<Props> {
       return;
     }
 
-    if (!token) return this.startPan(e);
+    // Tokens you do not control cannot be dragged or opened: the press pans instead.
+    if (!token || !canControl(state.me, token)) return this.startPan(e);
     this.capture(e);
     const m = this.toMap(e);
     const rect = tokenRect(token, tokenSize(token, map.grid), map.grid);
@@ -201,10 +231,16 @@ export class MapView extends Component<Props> {
   override componentDidMount(): void {
     // Registered by hand so that preventDefault() works (non-passive listener).
     this.svg.current?.addEventListener("wheel", this.onWheel, { passive: false });
+    this.measure();
+    if (typeof ResizeObserver !== "undefined" && this.svg.current) {
+      this.resizeObserver = new ResizeObserver(this.measure);
+      this.resizeObserver.observe(this.svg.current);
+    }
   }
 
   override componentWillUnmount(): void {
     this.svg.current?.removeEventListener("wheel", this.onWheel);
+    this.resizeObserver?.disconnect();
   }
 
   render() {
@@ -231,7 +267,7 @@ export class MapView extends Component<Props> {
           ) : (
             <rect class="map-background map-background-empty" width={map.width} height={map.height} />
           )}
-          {map.grid.visible && <Grid map={map} />}
+          {map.grid.visible && <Grid map={map} view={this.visibleRect(view)} zoom={view.zoom} />}
           <g class="tokens">
             {tokens.map((t) => (
               <TokenShape
@@ -239,6 +275,7 @@ export class MapView extends Component<Props> {
                 token={state.drag?.tokenId === t.id ? { ...t, col: state.drag.col, row: state.drag.row } : t}
                 map={map}
                 selected={t.id === selectedId}
+                controllable={canControl(state.me, t)}
               />
             ))}
           </g>
@@ -258,47 +295,28 @@ export class MapView extends Component<Props> {
   }
 }
 
-/** SVG path of the main grid lines (cell borders). */
-export function gridPath(map: TableMap): string {
-  const { cellWidth: w, cellHeight: h, offsetX: ox, offsetY: oy, cols, rows } = map.grid;
-  const parts: string[] = [];
-  for (let i = 0; i <= cols; i++) parts.push(`M${ox + i * w} ${oy}V${oy + rows * h}`);
-  for (let j = 0; j <= rows; j++) parts.push(`M${ox} ${oy + j * h}H${ox + cols * w}`);
-  return parts.join("");
-}
-
-/** SVG path of the sub-cell lines inside each cell (empty when the grid is not split). */
-export function subGridPath(map: TableMap): string {
-  const { cellWidth: w, cellHeight: h, offsetX: ox, offsetY: oy, cols, rows, subdivisions: n } = map.grid;
-  if (n <= 1) return "";
-  const parts: string[] = [];
-  for (let i = 0; i < cols * n; i++) {
-    if (i % n !== 0) parts.push(`M${ox + (i * w) / n} ${oy}V${oy + rows * h}`);
-  }
-  for (let j = 0; j < rows * n; j++) {
-    if (j % n !== 0) parts.push(`M${ox} ${oy + (j * h) / n}H${ox + cols * w}`);
-  }
-  return parts.join("");
-}
-
-function Grid({ map }: { map: TableMap }) {
-  const sub = subGridPath(map);
+function Grid({ map, view, zoom }: { map: TableMap; view: MapRect; zoom: number }) {
+  const { main, sub } = visibleGridPaths(map.grid, view, zoom);
   const common = {
     fill: "none",
     stroke: map.grid.color,
     "stroke-width": 1,
     "vector-effect": "non-scaling-stroke",
+    "shape-rendering": "crispEdges",
     "pointer-events": "none",
   } as const;
   return (
     <g class="grid-layer">
-      {sub && <path class="grid-sub" d={sub} {...common} stroke-opacity={Math.min(1, map.grid.opacity * 0.7)} stroke-dasharray="3 3" />}
-      <path class="grid" d={gridPath(map)} {...common} stroke-opacity={map.grid.opacity} />
+      {/* Solid, fainter lines: dashed lines are very slow to draw when zoomed in (every dash is computed). */}
+      {sub && <path class="grid-sub" d={sub} {...common} stroke-opacity={map.grid.opacity * 0.5} />}
+      <path class="grid" d={main} {...common} stroke-opacity={map.grid.opacity} />
     </g>
   );
 }
 
-function TokenShape({ token, map, selected }: { token: Token; map: TableMap; selected: boolean }) {
+function TokenShape({ token, map, selected, controllable }: { token: Token; map: TableMap; selected: boolean; controllable: boolean }) {
+  // The HP bar is shown only to those who control the token (the owner sees all).
+  const showHp = controllable && !token.redacted;
   const size = tokenSize(token, map.grid);
   const { x, y, width: w, height: h } = tokenRect(token, size, map.grid);
   const inset = Math.max(0.5, Math.min(w, h) * 0.04);
@@ -309,7 +327,7 @@ function TokenShape({ token, map, selected }: { token: Token; map: TableMap; sel
   const clipId = `clip-${token.id}`;
   return (
     <g
-      class={`token ${selected ? "is-selected" : ""}`}
+      class={`token ${selected ? "is-selected" : ""} ${controllable ? "is-controllable" : ""}`}
       data-token-id={token.id}
       data-col={token.col}
       data-row={token.row}
@@ -338,15 +356,17 @@ function TokenShape({ token, map, selected }: { token: Token; map: TableMap; sel
       <text class="token-label" x={w / 2} y={-4} text-anchor="middle" font-size={Math.max(8, map.grid.cellHeight * 0.2)}>
         {token.stats.name}
       </text>
-      <g class="hp-bar" transform={`translate(${inset} ${h + 2})`}>
-        <rect class="hp-bar-bg" width={w - 2 * inset} height={barH} />
-        <rect
-          class="hp-bar-fill"
-          width={(w - 2 * inset) * ratio}
-          height={barH}
-          fill={ratio > 0.5 ? "#2ecc71" : ratio > 0.25 ? "#f1c40f" : "#e74c3c"}
-        />
-      </g>
+      {showHp && (
+        <g class="hp-bar" transform={`translate(${inset} ${h + 2})`}>
+          <rect class="hp-bar-bg" width={w - 2 * inset} height={barH} />
+          <rect
+            class="hp-bar-fill"
+            width={(w - 2 * inset) * ratio}
+            height={barH}
+            fill={ratio > 0.5 ? "#2ecc71" : ratio > 0.25 ? "#f1c40f" : "#e74c3c"}
+          />
+        </g>
+      )}
     </g>
   );
 }

@@ -11,13 +11,16 @@ import { startServer, type RunningServer } from "../../src/server/app.ts";
 
 export const PUBLIC_DIR = join(process.cwd(), "build", "public");
 
+/** Fake owner credentials used by the test servers. */
+export const OWNER = { username: "Game Master", password: "fake-test-password" };
+
 export function makeTempDir(): { dir: string; remove(): void } {
   const dir = mkdtempSync(join(tmpdir(), "malzob-test-"));
   return { dir, remove: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
 export async function startTestServer(dataDir: string): Promise<RunningServer> {
-  return startServer({ port: 0, host: "127.0.0.1", dataDir, publicDir: PUBLIC_DIR, saveDelayMs: 5 });
+  return startServer({ port: 0, host: "127.0.0.1", dataDir, publicDir: PUBLIC_DIR, saveDelayMs: 5, owner: OWNER });
 }
 
 type Msg<T extends ServerMessage["type"]> = Extract<ServerMessage, { type: T }>;
@@ -47,10 +50,18 @@ export class TestClient {
     return new TestClient(socket);
   }
 
-  /** Connects and says hello; resolves with the welcome message. */
+  /** Connects and says hello as a player; resolves with the welcome message. */
   static async join(server: RunningServer, name: string): Promise<{ client: TestClient; welcome: Msg<"welcome"> }> {
     const client = await TestClient.connect(server);
     client.send({ type: "hello", name });
+    const welcome = await client.next("welcome");
+    return { client, welcome };
+  }
+
+  /** Connects and logs in as the owner. */
+  static async joinOwner(server: RunningServer): Promise<{ client: TestClient; welcome: Msg<"welcome"> }> {
+    const client = await TestClient.connect(server);
+    client.send({ type: "hello", name: OWNER.username, password: OWNER.password });
     const welcome = await client.next("welcome");
     return { client, welcome };
   }
