@@ -69,7 +69,7 @@ This builds the client and starts the server on <http://localhost:3000>.
 
 **The first time**, it asks in the terminal for the **owner username and
 password** (the game master's account; the password is not shown while you
-type and must be at least 8 characters). It is stored hashed in
+type; any length, but not empty). It is stored hashed in
 `data/owner.json`. Then open the URL: log in with the owner username and
 password; players open the same URL and type just a name.
 

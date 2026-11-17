@@ -13,7 +13,6 @@ import { join } from "node:path";
 import { sameName } from "../shared/permissions.ts";
 
 export const OWNER_FILE = "owner.json";
-export const MIN_PASSWORD_LENGTH = 8;
 /** How long a session token stays valid. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -36,7 +35,8 @@ function hashPassword(password: string, salt: string): Buffer {
 export function credentialsProblem(username: string, password: string): string | null {
   if (username.trim().length === 0) return "The username must not be empty.";
   if (username.trim().length > 80) return "The username must be at most 80 characters.";
-  if (password.length < MIN_PASSWORD_LENGTH) return `The password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+  // Any length is fine, but not empty: an empty password field means "join as a player".
+  if (password.length === 0) return "The password must not be empty.";
   if (password.length > 200) return "The password must be at most 200 characters.";
   return null;
 }

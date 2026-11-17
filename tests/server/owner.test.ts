@@ -26,7 +26,9 @@ describe("owner account", () => {
     assert.ok(again.checkPassword("correct horse"));
     assert.ok(!again.checkPassword("correct horsE"));
     assert.ok(again.isOwnerName("game master"));
-    assert.throws(() => again.set("x", "short"), /at least 8/);
+    assert.throws(() => again.set("x", ""), /must not be empty/);
+    again.set("Game Master", "a");
+    assert.ok(again.checkPassword("a"), "short passwords are allowed");
     assert.throws(() => again.set("  ", "long enough"), /empty/);
   });
 
@@ -64,8 +66,8 @@ describe("owner account", () => {
       delete process.env.MALZOB_OWNER_PASSWORD;
       assert.equal(await ensureOwner(store, false), false, "no terminal, no variables: refuse");
       process.env.MALZOB_OWNER_USERNAME = "Game Master";
-      process.env.MALZOB_OWNER_PASSWORD = "short";
-      assert.equal(await ensureOwner(store, false), false, "bad password refused");
+      process.env.MALZOB_OWNER_PASSWORD = "";
+      assert.equal(await ensureOwner(store, false), false, "no password: refused (asks for a terminal)");
       process.env.MALZOB_OWNER_PASSWORD = "long enough password";
       assert.equal(await ensureOwner(store, false), true);
       assert.ok(store.checkPassword("long enough password"));
