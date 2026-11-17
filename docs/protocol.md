@@ -1,6 +1,6 @@
 # WebSocket protocol
 
-Version: **2** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
+Version: **3** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
 source of truth for the types below).
 
 - Endpoint: `ws://<host>:<port>/ws` (`wss://` behind HTTPS).
@@ -12,9 +12,9 @@ source of truth for the types below).
   applies it to the authoritative state (`src/shared/reducer.ts`), saves the
   state, then broadcasts it. Unknown fields are rejected, strings are trimmed
   and length-limited, numbers must be within range (see `LIMITS`). Counts
-  (`cols`, `rows`, `size`, `subdivisions`, stats) must be integers; grid
-  geometry and positions may be fractional and are rounded (4 decimals for
-  pixels, 6 for positions).
+  (`cols`, `rows`, `subdivisions`, stats) must be integers; grid
+  geometry, token sizes and positions may be fractional and are rounded (4
+  decimals for pixels and sizes, 6 for positions).
 - Positions are in **grid cells** (`col`, `row` = top-left of the token).
   When the map's grid is split (`subdivisions` > 1) positions can be fractional,
   in steps of `1 / subdivisions` (e.g. `2.5` with a 2 × 2 split). The server
@@ -23,6 +23,11 @@ source of truth for the types below).
 Changes in version 2: `cellSize`, `offsetX`, `offsetY` accept sub-pixel
 values; new grid fields `feetPerCell` and `subdivisions`; token `col`/`row`
 can be fractional.
+
+Changes in version 3: `cellSize` is replaced by `cellWidth` and `cellHeight`
+(cells may be non-square); new grid field `defaultTokenSize`; token and
+template `size` may be fractional or `null` (= the map's default); new
+`ping` message in both directions.
 
 ## Session flow
 
@@ -103,23 +108,25 @@ Partial update of the grid settings. All fields are optional:
 
 | field      | type    | range            |
 |------------|---------|------------------|
-| `cellSize` | number  | 4–1000 (px, sub-pixel allowed) |
+| `cellWidth` | number | 4–1000 (px, sub-pixel allowed) |
+| `cellHeight` | number | 4–1000 (px, sub-pixel allowed; may differ from the width) |
 | `offsetX`  | number  | −10000–10000 (px, sub-pixel allowed) |
 | `offsetY`  | number  | −10000–10000 (px, sub-pixel allowed) |
 | `feetPerCell` | number | 0.1–1000 (default 5) |
 | `subdivisions` | integer | 1–10: each cell is split into n × n sub-cells that tokens snap to (1 = no split) |
+| `defaultTokenSize` | number | 0.1–10 cells: size of tokens whose own `size` is `null` (default 1) |
 | `cols`     | integer | 1–500            |
 | `rows`     | integer | 1–500            |
 | `color`    | string  | `#rrggbb`        |
 | `opacity`  | number  | 0–1              |
 | `visible`  | boolean |                  |
 
-If the map has a background and `cellSize`/`offsetX`/`offsetY` change without
+If the map has a background and `cellWidth`/`cellHeight`/`offsetX`/`offsetY` change without
 explicit `cols`/`rows`, columns and rows are re-derived from the image. Tokens
 are re-snapped (to the new `subdivisions`) and re-clamped inside the new grid.
 ```json
-{ "type": "map.setGrid", "mapId": "8c1f…", "grid": { "cellSize": 70.25, "offsetX": 12.5, "opacity": 0.5 } }
-{ "type": "map.setGrid", "mapId": "8c1f…", "grid": { "feetPerCell": 5, "subdivisions": 2 } }
+{ "type": "map.setGrid", "mapId": "8c1f…", "grid": { "cellWidth": 70.25, "cellHeight": 68.5, "offsetX": 12.5, "opacity": 0.5 } }
+{ "type": "map.setGrid", "mapId": "8c1f…", "grid": { "feetPerCell": 5, "subdivisions": 2, "defaultTokenSize": 0.5 } }
 ```
 
 ### Tokens
@@ -140,7 +147,8 @@ and for each arrow-key move.
 ```
 
 #### `token.update`
-Partial update of a token. `changes` may hold `size` (1–10 cells), `color`
+Partial update of a token. `changes` may hold `size` (0.1–10 cells, or `null`
+to follow the map's `defaultTokenSize`), `color`
 (`#rrggbb`), `image` (hash or `null`) and `stats`, a partial stat sheet where
 `hp` and `abilities` are partial too. The token's name is `stats.name`.
 Never affects the template or other tokens.
@@ -195,6 +203,16 @@ Tokens created from it are kept (their `templateId` becomes `null`).
 { "type": "template.delete", "templateId": "b02e…" }
 ```
 
+### Ephemeral
+
+#### `ping`
+Point a spot of a map out to everyone, in map pixels. Not stored. The server
+checks the map exists and drops pings sent less than 150 ms apart by the
+same client.
+```json
+{ "type": "ping", "mapId": "8c1f…", "x": 512.5, "y": 300 }
+```
+
 ---
 
 ## Server → client
@@ -204,7 +222,7 @@ Answer to `hello`: who you are, the full state and the connected users.
 ```json
 {
   "type": "welcome",
-  "protocol": 2,
+  "protocol": 3,
   "you": { "id": "5d0c…", "name": "Jane Doe" },
   "state": { "rev": 12, "activeMapId": "8c1f…", "maps": [], "tokens": [], "templates": [] },
   "users": [{ "id": "5d0c…", "name": "Jane Doe" }]
@@ -229,7 +247,8 @@ patches instead; `rev` makes that possible without changing the model.)
         "width": 1400,
         "height": 1050,
         "grid": {
-          "cellSize": 70, "offsetX": 0, "offsetY": 0, "feetPerCell": 5, "subdivisions": 2,
+          "cellWidth": 70, "cellHeight": 70, "offsetX": 0, "offsetY": 0,
+          "feetPerCell": 5, "subdivisions": 2, "defaultTokenSize": 1,
           "cols": 20, "rows": 15, "color": "#000000", "opacity": 0.35, "visible": true
         }
       }
@@ -241,7 +260,7 @@ patches instead; `rev` makes that possible without changing the model.)
         "templateId": "b02e…",
         "col": 5.5,
         "row": 7,
-        "size": 1,
+        "size": null,
         "color": "#c0392b",
         "image": null,
         "stats": {
@@ -266,6 +285,13 @@ patches instead; `rev` makes that possible without changing the model.)
 Broadcast when someone joins, leaves or renames.
 ```json
 { "type": "users", "users": [{ "id": "5d0c…", "name": "Jane Doe" }, { "id": "77aa…", "name": "John Doe" }] }
+```
+
+#### `ping`
+Relayed to every joined client (the sender included), with who pinged.
+Clients show an expanding, fading circle for a moment.
+```json
+{ "type": "ping", "mapId": "8c1f…", "x": 512.5, "y": 300, "user": { "id": "5d0c…", "name": "Jane Doe" } }
 ```
 
 #### `error`

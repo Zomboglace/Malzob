@@ -69,7 +69,7 @@ describe("reducer: maps", () => {
       { type: "map.create", name: "Cave" },
       { type: "map.setBackground", mapId: "id1", image: IMAGE.hash },
       { type: "token.create", mapId: "id1", col: 19, row: 9 },
-      { type: "map.setGrid", mapId: "id1", grid: { cellSize: 140, offsetX: 0, color: "#ff0000", opacity: 0.5, visible: false } },
+      { type: "map.setGrid", mapId: "id1", grid: { cellWidth: 140, cellHeight: 140, offsetX: 0, color: "#ff0000", opacity: 0.5, visible: false } },
     );
     const g = s.maps[0]!.grid;
     assert.deepEqual([g.cols, g.rows, g.color, g.opacity, g.visible], [10, 5, "#ff0000", 0.5, false]);
@@ -92,8 +92,8 @@ describe("reducer: maps", () => {
     const ctx = context();
     let s = run(ctx, { type: "map.create", name: "Cave" }, { type: "token.create", mapId: "id1", col: 1.4, row: 1.6 });
     assert.deepEqual([s.tokens[0]!.col, s.tokens[0]!.row], [1, 2]);
-    s = must(applyIntent(s, { type: "map.setGrid", mapId: "id1", grid: { cellSize: 70.5, offsetX: 0.25 } }, ctx));
-    assert.equal(s.maps[0]!.grid.cellSize, 70.5);
+    s = must(applyIntent(s, { type: "map.setGrid", mapId: "id1", grid: { cellWidth: 70.5, offsetX: 0.25 } }, ctx));
+    assert.equal(s.maps[0]!.grid.cellWidth, 70.5);
   });
 
   test("references to missing maps are rejected without changing the state", () => {

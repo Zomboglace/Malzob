@@ -71,7 +71,7 @@ describe("UI: map interactions", () => {
   test("dragging a token sends snapped moves and shows the drag locally", () => {
     ui = mount();
     const svg = ui.$("svg[data-testid=map]");
-    const circle = svg.querySelector('[data-token-id="tok1"] circle')!;
+    const circle = svg.querySelector('[data-token-id="tok1"] ellipse')!;
     pointer(circle, "pointerdown", centre(2, 3));
     pointer(svg, "pointermove", { clientX: 160, clientY: 175 }); // still over cell (3,3)
     pointer(svg, "pointermove", centre(6, 5));
@@ -88,7 +88,7 @@ describe("UI: map interactions", () => {
   test("dragging outside the grid clamps the token", () => {
     ui = mount();
     const svg = ui.$("svg[data-testid=map]");
-    pointer(svg.querySelector('[data-token-id="tok1"] circle')!, "pointerdown", centre(2, 3));
+    pointer(svg.querySelector('[data-token-id="tok1"] ellipse')!, "pointerdown", centre(2, 3));
     pointer(svg, "pointermove", { clientX: 5000, clientY: -5000 });
     assert.deepEqual(ui.sent.at(-1), { type: "token.move", tokenId: "tok1", col: 9, row: 0 });
   });
@@ -129,7 +129,7 @@ describe("UI: map interactions", () => {
 describe("UI: stat sheet", () => {
   function openTokenSheet(): HTMLElement {
     const svg = ui.$("svg[data-testid=map]");
-    pointer(svg.querySelector('[data-token-id="tok1"] circle')!, "pointerdown", centre(2, 3));
+    pointer(svg.querySelector('[data-token-id="tok1"] ellipse')!, "pointerdown", centre(2, 3));
     pointer(svg, "pointerup", centre(2, 3));
     return ui.$("[data-testid=stat-sheet]");
   }
@@ -202,7 +202,9 @@ describe("UI: stat sheet", () => {
     const sheet = ui.$("[data-testid=stat-sheet]");
     assert.equal(sheet.dataset.kind, "template");
     changeValue(sheet.querySelector("input[name=hpMax]") as HTMLInputElement, "12");
-    changeValue(sheet.querySelector("input[name=size]") as HTMLInputElement, "2");
+    const size = sheet.querySelector("select[name=size]") as HTMLSelectElement;
+    size.value = "2";
+    size.dispatchEvent(new Event("change", { bubbles: true }));
     assert.deepEqual(ui.sent, [
       { type: "template.update", templateId: "tpl1", changes: { stats: { hp: { max: 12 } } } },
       { type: "template.update", templateId: "tpl1", changes: { size: 2 } },
@@ -226,14 +228,14 @@ describe("UI: maps and templates panels", () => {
     (panel.querySelector("input[name=mapName]") as HTMLInputElement).value = "Forest";
     panel.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     (panel.querySelector('[data-map-id="map1"] .map-activate') as HTMLElement).click();
-    changeValue(panel.querySelector("input[name=cellSize]") as HTMLInputElement, "64");
+    changeValue(panel.querySelector("input[name=cellWidth]") as HTMLInputElement, "64");
     changeValue(panel.querySelector("input[name=activeMapName]") as HTMLInputElement, "Big cave");
     (panel.querySelector("input[name=gridVisible]") as HTMLInputElement).click();
     (panel.querySelector('[data-map-id="map1"] .map-delete') as HTMLElement).click();
     assert.deepEqual(ui.sent, [
       { type: "map.create", name: "Forest" },
       { type: "map.activate", mapId: "map1" },
-      { type: "map.setGrid", mapId: "map1", grid: { cellSize: 64 } },
+      { type: "map.setGrid", mapId: "map1", grid: { cellWidth: 64, cellHeight: 64 } },
       { type: "map.rename", mapId: "map1", name: "Big cave" },
       { type: "map.setGrid", mapId: "map1", grid: { visible: false } },
       { type: "map.delete", mapId: "map1" },

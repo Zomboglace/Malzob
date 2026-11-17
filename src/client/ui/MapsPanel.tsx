@@ -5,6 +5,7 @@ import type { TableMap } from "../../shared/types.ts";
 import type { Controller } from "../controller.ts";
 import type { ClientState } from "../store.ts";
 import { ColorField, ImagePicker, NumberField, TextField } from "./fields.tsx";
+import { SizeSelect } from "./SizeSelect.tsx";
 
 interface Props {
   app: Controller;
@@ -73,6 +74,7 @@ function formatFeet(feet: number): string {
 function ActiveMapSettings({ app, map }: { app: Controller; map: TableMap }) {
   const grid = (patch: Record<string, number | string | boolean>) => app.send({ type: "map.setGrid", mapId: map.id, grid: patch });
   const { cellSize, offset, gridCells, feetPerCell, subdivisions } = LIMITS;
+  const square = map.grid.cellWidth === map.grid.cellHeight;
   return (
     <div class="active-map" data-testid="active-map">
       <TextField label="Name" name="activeMapName" value={map.name} onCommit={(name) => app.send({ type: "map.rename", mapId: map.id, name })} />
@@ -99,7 +101,22 @@ function ActiveMapSettings({ app, map }: { app: Controller; map: TableMap }) {
           <input type="checkbox" name="gridVisible" checked={map.grid.visible} onChange={(e) => grid({ visible: (e.currentTarget as HTMLInputElement).checked })} />
           <span>Show grid</span>
         </label>
-        <NumberField label="Cell size (px)" name="cellSize" decimals={4} value={map.grid.cellSize} min={cellSize.min} max={cellSize.max} onCommit={(v) => grid({ cellSize: v })} />
+        <button type="button" class="calibrate-start" onClick={() => app.setTool("calibrate")}>
+          Set grid from one cell (2 clicks)
+        </button>
+        <div class="row">
+          <NumberField
+            label="Cell width (px)"
+            name="cellWidth"
+            decimals={4}
+            value={map.grid.cellWidth}
+            min={cellSize.min}
+            max={cellSize.max}
+            // Square cells stay square when the width is edited; edit the height afterwards for non-square cells.
+            onCommit={(v) => grid(square ? { cellWidth: v, cellHeight: v } : { cellWidth: v })}
+          />
+          <NumberField label="Cell height (px)" name="cellHeight" decimals={4} value={map.grid.cellHeight} min={cellSize.min} max={cellSize.max} onCommit={(v) => grid({ cellHeight: v })} />
+        </div>
         <div class="row">
           <NumberField label="Offset X (px)" name="offsetX" decimals={4} value={map.grid.offsetX} min={offset.min} max={offset.max} onCommit={(v) => grid({ offsetX: v })} />
           <NumberField label="Offset Y (px)" name="offsetY" decimals={4} value={map.grid.offsetY} min={offset.min} max={offset.max} onCommit={(v) => grid({ offsetY: v })} />
@@ -119,6 +136,7 @@ function ActiveMapSettings({ app, map }: { app: Controller; map: TableMap }) {
             ))}
           </select>
         </label>
+        <SizeSelect label="Default token size" name="defaultTokenSize" value={map.grid.defaultTokenSize} onCommit={(v) => v !== null && grid({ defaultTokenSize: v })} />
         <div class="row">
           <NumberField label="Columns" name="cols" value={map.grid.cols} min={gridCells.min} max={gridCells.max} onCommit={(v) => grid({ cols: v })} />
           <NumberField label="Rows" name="rows" value={map.grid.rows} min={gridCells.min} max={gridCells.max} onCommit={(v) => grid({ rows: v })} />

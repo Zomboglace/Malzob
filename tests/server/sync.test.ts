@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import type { RunningServer } from "../../src/server/app.ts";
+import { PING_INTERVAL_MS } from "../../src/server/table.ts";
 import { PROTOCOL_VERSION } from "../../src/shared/protocol.ts";
 import { makeTempDir, startTestServer, TestClient } from "../helpers/server.ts";
 
@@ -78,6 +79,25 @@ describe("server: live sync between two clients", () => {
     await carol.close();
     const users = await alice.next("users", (m) => m.users.length === 2);
     assert.ok(!users.users.some((u) => u.name === "Carol Doe"));
+  });
+
+  test("pings are relayed to everyone with the sender, and never stored", async () => {
+    const mapId = server.table.getState().maps[0]!.id;
+    const rev = server.table.getState().rev;
+    await new Promise((r) => setTimeout(r, PING_INTERVAL_MS));
+    alice.send({ type: "ping", mapId, x: 120.5, y: 64 });
+    const [a, b] = await Promise.all([alice.next("ping"), bob.next("ping")]);
+    assert.deepEqual(a, b);
+    assert.deepEqual([b.mapId, b.x, b.y, b.user.name], [mapId, 120.5, 64, "Jane Doe"]);
+    assert.equal(server.table.getState().rev, rev, "a ping does not change the state");
+
+    // Pings on unknown maps are rejected; pings faster than the limit are dropped.
+    alice.send({ type: "ping", mapId: "nope", x: 0, y: 0 });
+    assert.equal((await alice.next("error")).code, "not_found");
+    alice.send({ type: "ping", mapId, x: 1, y: 1 });
+    alice.send({ type: "ping", mapId, x: 2, y: 2 });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.ok(!bob.messages.some((m) => m.type === "ping" && m.x === 2), "the burst is limited");
   });
 
   test("a reconnecting client resyncs with the full state", async () => {

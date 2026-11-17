@@ -10,7 +10,7 @@ import type { TableState } from "../../src/shared/types.ts";
 
 /** A small table: one 10x8 map with 50px cells, a Goblin template, one token. */
 export function sampleTable(): TableState {
-  const grid = { ...defaultGrid(), cellSize: 50, cols: 10, rows: 8 };
+  const grid = { ...defaultGrid(), cellWidth: 50, cellHeight: 50, cols: 10, rows: 8 };
   const goblin = defaultStats("Goblin");
   goblin.hp = { current: 7, max: 7, temp: 0 };
   const token = defaultStats("Goblin 1");
@@ -37,7 +37,7 @@ export interface Mounted {
   unmount(): void;
 }
 
-export function mount(partial: Partial<ClientState> = {}): Mounted {
+export function mount(partial: Partial<ClientState> = {}, options: { pingDurationMs?: number } = {}): Mounted {
   const root = document.createElement("div");
   document.body.appendChild(root);
   const store = new Store({
@@ -61,6 +61,7 @@ export function mount(partial: Partial<ClientState> = {}): Mounted {
       throw new Error("no uploads in this test");
     },
     onJoin: (n) => joined.push(n),
+    ...options,
   });
   const draw = () => render(h(App, { app, state: store.get() }), root);
   const unsubscribe = store.subscribe(draw);

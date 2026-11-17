@@ -5,13 +5,13 @@
  * through `ReducerContext`, so the reducer is fully testable and can run on
  * the server (authoritative) or, later, on a client (optimistic updates).
  */
-import { clampToGrid, defaultGrid, gridDimensionsFor } from "./grid.ts";
+import { clampToGrid, defaultGrid, gridDimensionsFor, tokenSize } from "./grid.ts";
 import type { AppearancePatch, ClientMessage, ErrorCode } from "./protocol.ts";
 import { applyStatsPatch, cloneStats, defaultStats } from "./stats.ts";
 import type { ImageRef, TableMap, TableState, Token, TokenTemplate } from "./types.ts";
 
-/** Messages handled by the reducer (session messages are handled by the server). */
-export type StateIntent = Exclude<ClientMessage, { type: "hello" } | { type: "user.rename" }>;
+/** Messages that change the state (session and ephemeral messages are handled by the server). */
+export type StateIntent = Exclude<ClientMessage, { type: "hello" } | { type: "user.rename" } | { type: "ping" }>;
 
 export interface ReducerContext {
   newId(): string;
@@ -22,6 +22,12 @@ export interface ReducerContext {
 export type ReducerResult = { ok: true; state: TableState } | { ok: false; code: ErrorCode; error: string };
 
 export const DEFAULT_TOKEN_COLOR = "#c0392b";
+
+/** Columns and rows that fit in the map's background image with its current cell size and offset. */
+function dimensionsFromImage(map: TableMap): { cols: number; rows: number } {
+  const g = map.grid;
+  return gridDimensionsFor(map.width, map.height, g.cellWidth, g.cellHeight, g.offsetX, g.offsetY);
+}
 
 export function emptyState(): TableState {
   return { rev: 0, activeMapId: null, maps: [], tokens: [], templates: [] };
@@ -53,7 +59,7 @@ function image(ctx: ReducerContext, hash: string | null): ImageRef | null {
 function clampTokens(state: TableState, map: TableMap): void {
   for (const t of state.tokens) {
     if (t.mapId !== map.id) continue;
-    const c = clampToGrid(t, map.grid, t.size);
+    const c = clampToGrid(t, map.grid, tokenSize(t, map.grid));
     t.col = c.col;
     t.row = c.row;
   }
@@ -87,8 +93,8 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
         id: ctx.newId(),
         name: m.name,
         background: null,
-        width: grid.cols * grid.cellSize,
-        height: grid.rows * grid.cellSize,
+        width: grid.cols * grid.cellWidth,
+        height: grid.rows * grid.cellHeight,
         grid,
       };
       s.maps.push(map);
@@ -115,10 +121,10 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
       if (bg) {
         map.width = bg.width;
         map.height = bg.height;
-        Object.assign(map.grid, gridDimensionsFor(bg.width, bg.height, map.grid.cellSize, map.grid.offsetX, map.grid.offsetY));
+        Object.assign(map.grid, dimensionsFromImage(map));
       } else {
-        map.width = map.grid.cols * map.grid.cellSize;
-        map.height = map.grid.rows * map.grid.cellSize;
+        map.width = map.grid.cols * map.grid.cellWidth;
+        map.height = map.grid.rows * map.grid.cellHeight;
       }
       clampTokens(s, map);
       return;
@@ -127,14 +133,15 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
       const map = find(s.maps, m.mapId, "map");
       const g = m.grid;
       Object.assign(map.grid, g);
-      const geometryChanged = g.cellSize !== undefined || g.offsetX !== undefined || g.offsetY !== undefined;
+      const geometryChanged =
+        g.cellWidth !== undefined || g.cellHeight !== undefined || g.offsetX !== undefined || g.offsetY !== undefined;
       if (geometryChanged && g.cols === undefined && g.rows === undefined && map.background) {
         // Keep the grid covering the image when the cell size or offset changes.
-        Object.assign(map.grid, gridDimensionsFor(map.width, map.height, map.grid.cellSize, map.grid.offsetX, map.grid.offsetY));
+        Object.assign(map.grid, dimensionsFromImage(map));
       }
       if (!map.background) {
-        map.width = map.grid.offsetX + map.grid.cols * map.grid.cellSize;
-        map.height = map.grid.offsetY + map.grid.rows * map.grid.cellSize;
+        map.width = map.grid.offsetX + map.grid.cols * map.grid.cellWidth;
+        map.height = map.grid.offsetY + map.grid.rows * map.grid.cellHeight;
       }
       clampTokens(s, map);
       return;
@@ -142,8 +149,8 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
     case "token.create": {
       const map = find(s.maps, m.mapId, "map");
       const tpl = m.templateId ? find(s.templates, m.templateId, "template") : null;
-      const size = tpl?.size ?? 1;
-      const cell = clampToGrid({ col: m.col, row: m.row }, map.grid, size);
+      const size = tpl ? tpl.size : null;
+      const cell = clampToGrid({ col: m.col, row: m.row }, map.grid, tokenSize({ size }, map.grid));
       s.tokens.push({
         id: ctx.newId(),
         mapId: map.id,
@@ -159,14 +166,14 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
     case "token.move": {
       const token = find(s.tokens, m.tokenId, "token");
       const map = find(s.maps, token.mapId, "map");
-      Object.assign(token, clampToGrid({ col: m.col, row: m.row }, map.grid, token.size));
+      Object.assign(token, clampToGrid({ col: m.col, row: m.row }, map.grid, tokenSize(token, map.grid)));
       return;
     }
     case "token.update": {
       const token = find(s.tokens, m.tokenId, "token");
       applyAppearance(token, m.changes, ctx);
       const map = find(s.maps, token.mapId, "map");
-      Object.assign(token, clampToGrid(token, map.grid, token.size));
+      Object.assign(token, clampToGrid(token, map.grid, tokenSize(token, map.grid)));
       return;
     }
     case "token.duplicate": {
@@ -174,7 +181,8 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
       const map = find(s.maps, token.mapId, "map");
       const copy: Token = structuredClone(token);
       copy.id = ctx.newId();
-      Object.assign(copy, clampToGrid({ col: token.col + token.size, row: token.row }, map.grid, token.size));
+      const size = tokenSize(token, map.grid);
+      Object.assign(copy, clampToGrid({ col: token.col + size, row: token.row }, map.grid, size));
       s.tokens.push(copy);
       return;
     }
@@ -188,7 +196,7 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
       stats.name = m.name;
       s.templates.push({
         id: ctx.newId(),
-        size: src?.size ?? 1,
+        size: src ? src.size : null,
         color: src?.color ?? DEFAULT_TOKEN_COLOR,
         image: src?.image ? { ...src.image } : null,
         stats,

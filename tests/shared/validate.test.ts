@@ -20,7 +20,7 @@ describe("validateClientMessage", () => {
     ok({ type: "map.create", name: "Cave" });
     ok({ type: "map.setBackground", mapId: "m1", image: null });
     ok({ type: "map.setBackground", mapId: "m1", image: "0".repeat(64) });
-    ok({ type: "map.setGrid", mapId: "m1", grid: { cellSize: 50, opacity: 0.5, visible: false, color: "#AABBCC" } });
+    ok({ type: "map.setGrid", mapId: "m1", grid: { cellWidth: 50, cellHeight: 49.5, opacity: 0.5, visible: false, color: "#AABBCC" } });
     ok({ type: "token.create", mapId: "m1", col: 1, row: 2, templateId: "t1" });
     ok({ type: "token.move", tokenId: "t1", col: 3, row: 4 });
     ok({
@@ -32,8 +32,8 @@ describe("validateClientMessage", () => {
   });
 
   test("accepts sub-pixel grid values, fractional positions and grid splits", () => {
-    const grid = ok({ type: "map.setGrid", mapId: "m1", grid: { cellSize: 70.123456, offsetX: -3.25, feetPerCell: 2.5, subdivisions: 2 } });
-    assert.deepEqual(grid, { type: "map.setGrid", mapId: "m1", grid: { cellSize: 70.1235, offsetX: -3.25, feetPerCell: 2.5, subdivisions: 2 } });
+    const grid = ok({ type: "map.setGrid", mapId: "m1", grid: { cellWidth: 70.123456, offsetX: -3.25, feetPerCell: 2.5, subdivisions: 2 } });
+    assert.deepEqual(grid, { type: "map.setGrid", mapId: "m1", grid: { cellWidth: 70.1235, offsetX: -3.25, feetPerCell: 2.5, subdivisions: 2 } });
     assert.deepEqual(ok({ type: "token.move", tokenId: "t1", col: 2.5, row: 0.25 }), { type: "token.move", tokenId: "t1", col: 2.5, row: 0.25 });
   });
 
@@ -53,7 +53,8 @@ describe("validateClientMessage", () => {
     bad({ type: "map.rename", mapId: "../etc", name: "x" }, /valid id/);
     bad({ type: "token.move", tokenId: "t1", col: Number.NaN, row: 0 }, /number/);
     bad({ type: "token.move", tokenId: "t1", col: "1", row: 0 }, /number/);
-    bad({ type: "token.update", tokenId: "t1", changes: { size: 1.5 } }, /integer/);
+    bad({ type: "token.update", tokenId: "t1", changes: { size: "2" } }, /number/);
+    bad({ type: "token.update", tokenId: "t1", changes: { size: 0.05 } }, /between/);
     bad({ type: "map.setGrid", mapId: "m1", grid: { subdivisions: 0 } }, /between/);
     bad({ type: "map.setGrid", mapId: "m1", grid: { subdivisions: 1.5 } }, /integer/);
     bad({ type: "map.setGrid", mapId: "m1", grid: { feetPerCell: 0 } }, /between/);
@@ -67,7 +68,8 @@ describe("validateClientMessage", () => {
     bad({ type: "token.update", tokenId: "t1", changes: { stats: { abilities: { str: 99 } } } }, /between/);
     bad({ type: "token.update", tokenId: "t1", changes: { stats: { hp: { current: Number.NaN } } } }, /integer/);
     bad({ type: "map.setGrid", mapId: "m1", grid: { opacity: 2 } }, /opacity/);
-    bad({ type: "map.setGrid", mapId: "m1", grid: { cellSize: 3.9 } }, /between/);
+    bad({ type: "map.setGrid", mapId: "m1", grid: { cellHeight: 3.9 } }, /between/);
+    bad({ type: "map.setGrid", mapId: "m1", grid: { cellSize: 50 } }, /not allowed/);
     bad({ type: "map.setGrid", mapId: "m1", grid: { visible: "yes" } }, /boolean/);
   });
 });

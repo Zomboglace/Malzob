@@ -13,10 +13,14 @@ import { validateClientMessage } from "../shared/validate.ts";
 import type { ImageStore } from "./images.ts";
 import type { StateStore } from "./store.ts";
 
+/** Minimum delay between two pings from the same client; faster pings are dropped. */
+export const PING_INTERVAL_MS = 150;
+
 interface Client {
   socket: WebSocket;
   /** null until the client has sent `hello`. */
   user: User | null;
+  lastPingAt: number;
 }
 
 export class Table {
@@ -37,7 +41,7 @@ export class Table {
   }
 
   connect(socket: WebSocket): void {
-    this.clients.set(socket, { socket, user: null });
+    this.clients.set(socket, { socket, user: null, lastPingAt: 0 });
     socket.on("message", (data, isBinary) => {
       if (isBinary) return this.sendError(socket, "invalid", "binary messages are not supported");
       this.receive(socket, data.toString());
@@ -89,6 +93,17 @@ export class Table {
     if (msg.type === "user.rename") {
       client.user.name = msg.name;
       this.broadcastUsers();
+      return;
+    }
+    if (msg.type === "ping") {
+      // Ephemeral: relayed to everyone, never stored.
+      if (!this.state.maps.some((m) => m.id === msg.mapId)) {
+        return this.sendError(client.socket, "not_found", `map ${msg.mapId} not found`, msg.type);
+      }
+      const now = Date.now();
+      if (now - client.lastPingAt < PING_INTERVAL_MS) return;
+      client.lastPingAt = now;
+      this.broadcast({ type: "ping", mapId: msg.mapId, x: msg.x, y: msg.y, user: client.user });
       return;
     }
 

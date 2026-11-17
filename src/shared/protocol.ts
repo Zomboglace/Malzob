@@ -8,13 +8,18 @@
 import type { StatsPatch } from "./stats.ts";
 import type { GridSettings, TableState, User } from "./types.ts";
 
-/** 2: fractional grid values and token positions, feetPerCell, subdivisions. */
-export const PROTOCOL_VERSION = 2;
+/**
+ * 2: fractional grid values and token positions, feetPerCell, subdivisions.
+ * 3: cellWidth/cellHeight (replace cellSize), defaultTokenSize, nullable and
+ *    fractional token sizes, ping.
+ */
+export const PROTOCOL_VERSION = 3;
 export const WS_PATH = "/ws";
 
 /** Appearance fields shared by token and template updates. */
 export interface AppearancePatch {
-  size?: number;
+  /** Size in cells (may be fractional), or null to follow the map's default token size. */
+  size?: number | null;
   color?: string;
   /** Hash of an uploaded image, or null to remove the image. */
   image?: string | null;
@@ -48,7 +53,9 @@ export type ClientMessage =
   // Templates
   | { type: "template.create"; name: string; fromTokenId?: string }
   | { type: "template.update"; templateId: string; changes: AppearancePatch }
-  | { type: "template.delete"; templateId: string };
+  | { type: "template.delete"; templateId: string }
+  // Ephemeral (not stored): point at a spot of a map, in map pixels.
+  | { type: "ping"; mapId: string; x: number; y: number };
 
 export type ClientMessageType = ClientMessage["type"];
 
@@ -61,5 +68,7 @@ export type ServerMessage =
   | { type: "state"; state: TableState }
   /** Sent to everyone when someone joins, leaves or renames. */
   | { type: "users"; users: User[] }
+  /** Sent to everyone (sender included) when someone pings a spot of a map. */
+  | { type: "ping"; mapId: string; x: number; y: number; user: User }
   /** Sent only to the client whose message was rejected. */
   | { type: "error"; code: ErrorCode; message: string; ref?: string };

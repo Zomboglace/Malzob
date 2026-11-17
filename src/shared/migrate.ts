@@ -7,10 +7,23 @@
  */
 import { defaultGrid } from "./grid.ts";
 import { emptyState } from "./reducer.ts";
-import type { TableState } from "./types.ts";
+import type { GridSettings, TableState } from "./types.ts";
+
+/** A grid as saved by version 1 or 2 (square cells). */
+type LegacyGrid = Partial<GridSettings> & { cellSize?: number };
+
+function migrateGrid(saved: LegacyGrid): GridSettings {
+  const { cellSize, ...rest } = saved;
+  const grid = { ...defaultGrid(), ...rest };
+  if (cellSize !== undefined) {
+    grid.cellWidth = saved.cellWidth ?? cellSize;
+    grid.cellHeight = saved.cellHeight ?? cellSize;
+  }
+  return grid;
+}
 
 export function migrateState(raw: TableState): TableState {
   const state: TableState = { ...emptyState(), ...raw };
-  state.maps = state.maps.map((map) => ({ ...map, grid: { ...defaultGrid(), ...map.grid } }));
+  state.maps = state.maps.map((map) => ({ ...map, grid: migrateGrid(map.grid as LegacyGrid) }));
   return state;
 }

@@ -12,8 +12,10 @@ export const LIMITS = {
   nameLength: 80,
   notesLength: 20_000,
   idLength: 64,
-  tokenSize: { min: 1, max: 10 },
+  tokenSize: { min: 0.1, max: 10 },
   cellSize: { min: 4, max: 1000 },
+  /** Ping coordinates, in map pixels. */
+  point: { min: -1_000_000, max: 1_000_000 },
   offset: { min: -10_000, max: 10_000 },
   feetPerCell: { min: 0.1, max: 1000 },
   subdivisions: { min: 1, max: 10 },
@@ -138,7 +140,7 @@ function appearancePatch(value: unknown, path: string): AppearancePatch {
   const o = obj(value, path);
   onlyKeys(o, ["size", "color", "image", "stats"], path);
   const out: Obj = {};
-  opt(o, out, "size", () => int(o, "size", LIMITS.tokenSize, path));
+  opt(o, out, "size", () => (o.size === null ? null : num(o, "size", LIMITS.tokenSize, path)));
   opt(o, out, "color", () => color(o, "color", path));
   opt(o, out, "image", () => imageHash(o, "image", path));
   opt(o, out, "stats", () => statsPatch(o.stats, `${path}.stats`));
@@ -147,10 +149,15 @@ function appearancePatch(value: unknown, path: string): AppearancePatch {
 
 function gridPatch(value: unknown, path: string): Partial<GridSettings> {
   const o = obj(value, path);
-  const keys = ["cellSize", "offsetX", "offsetY", "feetPerCell", "subdivisions", "cols", "rows", "color", "opacity", "visible"];
+  const keys = [
+    "cellWidth", "cellHeight", "offsetX", "offsetY", "feetPerCell", "subdivisions",
+    "defaultTokenSize", "cols", "rows", "color", "opacity", "visible",
+  ];
   onlyKeys(o, keys, path);
   const out: Obj = {};
-  opt(o, out, "cellSize", () => num(o, "cellSize", LIMITS.cellSize, path));
+  opt(o, out, "cellWidth", () => num(o, "cellWidth", LIMITS.cellSize, path));
+  opt(o, out, "cellHeight", () => num(o, "cellHeight", LIMITS.cellSize, path));
+  opt(o, out, "defaultTokenSize", () => num(o, "defaultTokenSize", LIMITS.tokenSize, path));
   opt(o, out, "offsetX", () => num(o, "offsetX", LIMITS.offset, path));
   opt(o, out, "offsetY", () => num(o, "offsetY", LIMITS.offset, path));
   opt(o, out, "feetPerCell", () => num(o, "feetPerCell", LIMITS.feetPerCell, path));
@@ -238,6 +245,9 @@ function validate(value: unknown): ClientMessage {
     case "template.delete":
       keys("templateId");
       return { type, templateId: id(m, "templateId", p) };
+    case "ping":
+      keys("mapId", "x", "y");
+      return { type, mapId: id(m, "mapId", p), x: num(m, "x", LIMITS.point, p, 2), y: num(m, "y", LIMITS.point, p, 2) };
     default:
       return fail(`unknown message type ${JSON.stringify(type)}`);
   }

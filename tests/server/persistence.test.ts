@@ -85,6 +85,7 @@ describe("server: persistence", () => {
     assert.equal(map.name, "Old cave");
     assert.equal(map.grid.feetPerCell, 5);
     assert.equal(map.grid.subdivisions, 1);
+    assert.deepEqual([map.grid.cellWidth, map.grid.cellHeight, map.grid.defaultTokenSize], [70, 70, 1]);
     await server.close();
   });
 

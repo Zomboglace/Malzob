@@ -4,9 +4,10 @@
  * messages into the client store. The UI never touches the socket directly,
  * which keeps components easy to test with a fake `send`.
  */
+import type { Point } from "../shared/grid.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import type { ImageRef, TableState } from "../shared/types.ts";
-import type { Placing, Selection, Store } from "./store.ts";
+import type { Placing, Selection, Store, Tool } from "./store.ts";
 import type { Uploader } from "./upload.ts";
 import type { View } from "./view.ts";
 
@@ -21,6 +22,11 @@ export interface Controller {
   setView(mapId: string, view: View): void;
   setDrag(drag: { tokenId: string; col: number; row: number } | null): void;
   notify(message: string | null): void;
+  /** Switches tool; clears the ruler, calibration and placing. */
+  setTool(tool: Tool): void;
+  setRuler(ruler: { mapId: string; from: Point; to: Point } | null): void;
+  setCalibration(calibration: { mapId: string; first: Point | null; hover: Point | null } | null): void;
+  toggleSidebar(): void;
   /** Uploads an image; returns null (and shows a notice) on failure. */
   upload(file: Blob): Promise<ImageRef | null>;
   handleServerMessage(msg: ServerMessage): void;
@@ -33,6 +39,15 @@ export interface ControllerDeps {
   uploader: Uploader;
   /** Called once a name has been chosen (main.ts opens the connection here). */
   onJoin?(name: string): void;
+  /** How long a ping stays on screen (ms). */
+  pingDurationMs?: number;
+}
+
+/** A stable, readable colour for a user, derived from their id. */
+export function userColor(id: string): string {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h}, 85%, 55%)`;
 }
 
 /** Drops local references to things that no longer exist on the server. */
@@ -46,7 +61,8 @@ function pruneLocal(table: TableState, selection: Selection | null, placing: Pla
   };
 }
 
-export function createController({ store, send, uploader, onJoin }: ControllerDeps): Controller {
+export function createController({ store, send, uploader, onJoin, pingDurationMs = 1900 }: ControllerDeps): Controller {
+  let pingSeq = 0;
   return {
     store,
     send(msg) {
@@ -71,6 +87,18 @@ export function createController({ store, send, uploader, onJoin }: ControllerDe
     notify(notice) {
       store.update({ notice });
     },
+    setTool(tool) {
+      store.update({ tool, ruler: null, calibration: null, placing: null });
+    },
+    setRuler(ruler) {
+      store.update({ ruler });
+    },
+    setCalibration(calibration) {
+      store.update({ calibration });
+    },
+    toggleSidebar() {
+      store.update((s) => ({ sidebarCollapsed: !s.sidebarCollapsed }));
+    },
     async upload(file) {
       try {
         return await uploader(file);
@@ -94,6 +122,12 @@ export function createController({ store, send, uploader, onJoin }: ControllerDe
         case "users":
           store.update({ users: msg.users });
           return;
+        case "ping": {
+          const ping = { id: ++pingSeq, mapId: msg.mapId, x: msg.x, y: msg.y, color: userColor(msg.user.id), name: msg.user.name };
+          store.update((s) => ({ pings: [...s.pings, ping] }));
+          setTimeout(() => store.update((s) => ({ pings: s.pings.filter((p) => p.id !== ping.id) })), pingDurationMs);
+          return;
+        }
         case "error":
           store.update({ notice: `Server rejected ${msg.ref ?? "a message"}: ${msg.message}` });
           return;

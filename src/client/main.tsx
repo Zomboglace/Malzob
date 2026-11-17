@@ -4,21 +4,32 @@ import { WS_PATH } from "../shared/protocol.ts";
 import { Connection, type SocketLike, socketUrl } from "./connection.ts";
 import { createController } from "./controller.ts";
 import { handleKeyDown } from "./keyboard.ts";
-import { Store } from "./store.ts";
+import { initialClientState, Store } from "./store.ts";
 import { App } from "./ui/App.tsx";
 import { createUploader } from "./upload.ts";
 
 const NAME_KEY = "malzob.name";
+const SIDEBAR_KEY = "malzob.sidebarCollapsed";
 
-function savedName(): string | null {
+function load(key: string): string | null {
   try {
-    return localStorage.getItem(NAME_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-const store = new Store();
+function save(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable: the value is just not remembered.
+  }
+}
+
+const store = new Store({ ...initialClientState(), sidebarCollapsed: load(SIDEBAR_KEY) === "1" });
+// Remember whether the sidebar is collapsed in this browser.
+store.subscribe((s) => save(SIDEBAR_KEY, s.sidebarCollapsed ? "1" : "0"));
 
 const connection = new Connection({
   url: socketUrl(location, WS_PATH),
@@ -34,11 +45,7 @@ const app = createController({
   send: (msg) => connection.send(msg),
   uploader: createUploader(),
   onJoin: (name) => {
-    try {
-      localStorage.setItem(NAME_KEY, name);
-    } catch {
-      // Storage unavailable: the name is just not remembered.
-    }
+    save(NAME_KEY, name);
     connection.start();
   },
 });
@@ -49,9 +56,9 @@ store.subscribe(draw);
 draw();
 
 // Pre-fill the join form with the last name used in this browser.
-const previous = savedName();
+const previous = load(NAME_KEY);
 const input = root.querySelector<HTMLInputElement>("input[name=displayName]");
 if (previous && input) input.value = previous;
 
-// Arrow keys move the selected token; Escape cancels placing / closes the sheet.
+// Arrow keys move the selected token; Escape leaves the tool / cancels placing / closes the sheet.
 addEventListener("keydown", (e) => handleKeyDown(app, e));

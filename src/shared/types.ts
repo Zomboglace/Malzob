@@ -42,8 +42,9 @@ export interface ImageRef {
 export type ImageExt = "png" | "jpg" | "webp";
 
 export interface GridSettings {
-  /** Size of one square cell in map (image) pixels. May be fractional (sub-pixel). */
-  cellSize: number;
+  /** Width and height of one cell in map (image) pixels. Fractional (sub-pixel) and non-square allowed. */
+  cellWidth: number;
+  cellHeight: number;
   /** Horizontal / vertical offset of the grid origin, in map pixels. May be fractional. */
   offsetX: number;
   offsetY: number;
@@ -54,6 +55,8 @@ export interface GridSettings {
    * tokens snap to (1 = no split, 2 = 4 sub-cells per cell, ...).
    */
   subdivisions: number;
+  /** Size, in cells, of tokens on this map that have no size of their own. */
+  defaultTokenSize: number;
   cols: number;
   rows: number;
   /** CSS colour, `#rrggbb`. */
@@ -84,8 +87,11 @@ export interface Token {
    */
   col: number;
   row: number;
-  /** Footprint in cells: 1 = 1x1, 2 = 2x2, ... */
-  size: number;
+  /**
+   * Footprint in cells (1 = 1x1, 2 = 2x2, 0.5 = half a cell...), or null to
+   * use the map's `grid.defaultTokenSize`. See `tokenSize()` in grid.ts.
+   */
+  size: number | null;
   color: string;
   image: ImageRef | null;
   /** The token's own stat sheet; `stats.name` is the token's name. */
@@ -94,7 +100,8 @@ export interface Token {
 
 export interface TokenTemplate {
   id: string;
-  size: number;
+  /** Copied to tokens placed from this template; null = map default. */
+  size: number | null;
   color: string;
   image: ImageRef | null;
   stats: StatSheet;

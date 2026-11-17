@@ -13,7 +13,7 @@ import {
   snapToGrid,
 } from "../../src/shared/grid.ts";
 
-const grid = { ...defaultGrid(), cellSize: 50, offsetX: 10, offsetY: 20, cols: 10, rows: 8 };
+const grid = { ...defaultGrid(), cellWidth: 50, cellHeight: 50, offsetX: 10, offsetY: 20, cols: 10, rows: 8 };
 
 describe("grid", () => {
   test("default grid derives columns and rows from the image size", () => {
@@ -24,8 +24,8 @@ describe("grid", () => {
   });
 
   test("dimensions account for the offset and never go below 1", () => {
-    assert.deepEqual(gridDimensionsFor(1000, 500, 100, 50, 0), { cols: 9, rows: 5 });
-    assert.deepEqual(gridDimensionsFor(10, 10, 100, 0, 0), { cols: 1, rows: 1 });
+    assert.deepEqual(gridDimensionsFor(1000, 500, 100, 100, 50, 0), { cols: 9, rows: 5 });
+    assert.deepEqual(gridDimensionsFor(10, 10, 100, 100, 0, 0), { cols: 1, rows: 1 });
   });
 
   test("cell <-> pixel round trip with offset", () => {
@@ -65,11 +65,11 @@ describe("grid", () => {
   });
 
   test("sub-pixel cell sizes and offsets", () => {
-    const g = { ...grid, cellSize: 70.5, offsetX: 3.25, offsetY: 0.5 };
+    const g = { ...grid, cellWidth: 70.5, cellHeight: 70.5, offsetX: 3.25, offsetY: 0.5 };
     assert.deepEqual(cellToPixel({ col: 2, row: 1 }, g), { x: 144.25, y: 71 });
     assert.deepEqual(pixelToCell(144.25 + 35, 71 + 35, g), { col: 2, row: 1 });
     // No column lost to float error: 7 cells of 100.1 px in 700.7 px.
-    assert.deepEqual(gridDimensionsFor(700.7, 300.3, 100.1, 0, 0), { cols: 7, rows: 3 });
+    assert.deepEqual(gridDimensionsFor(700.7, 300.3, 100.1, 100.1, 0, 0), { cols: 7, rows: 3 });
   });
 
   test("split cells: positions snap to sub-cells", () => {

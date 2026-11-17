@@ -1,19 +1,23 @@
 /**
- * The map, drawn in SVG: background image, grid and tokens.
+ * The map, drawn in SVG: background image, grid, tokens, and the overlays of
+ * the local tools (ruler, grid calibration) and of pings.
  *
- * Interactions:
- *  - wheel: zoom around the cursor (local)
- *  - drag on empty space: pan (local)
- *  - drag a token: move it, snapped to the grid (or its sub-cells); sent live to the server
- *  - click a token: open its stat sheet
- *  - click the map while "placing": create a token in that cell
+ * Pointer interactions depend on the active tool (see Tool in store.ts):
+ *  - any tool:  wheel zooms around the cursor; middle-button drag pans;
+ *               Alt+click pings
+ *  - select:    drag a token to move it (snapped, sent live); click a token
+ *               to open its sheet; drag empty space to pan; click while
+ *               "placing" to create a token
+ *  - ruler:     drag anywhere to measure (no snapping)
+ *  - ping:      click to ping
+ *  - calibrate: click two opposite corners of one cell; dragging still pans
  */
 import { Component, createRef } from "preact";
-import { cellToPixel, snapToGrid } from "../../shared/grid.ts";
+import { gridFromCorners, type Point, rulerDistance, snapToGrid, tokenRect, tokenSize } from "../../shared/grid.ts";
 import { hpRatio } from "../../shared/stats.ts";
 import type { TableMap, Token } from "../../shared/types.ts";
 import type { Controller } from "../controller.ts";
-import type { ClientState } from "../store.ts";
+import type { ActivePing, ClientState } from "../store.ts";
 import { imageUrl } from "../upload.ts";
 import { DEFAULT_VIEW, panBy, screenToMap, type View, wheelFactor, zoomAt } from "../view.ts";
 
@@ -27,8 +31,9 @@ interface Props {
 const DRAG_THRESHOLD = 4;
 
 type Gesture =
-  | { kind: "pan"; lastX: number; lastY: number }
-  | { kind: "token"; tokenId: string; startX: number; startY: number; moved: boolean; grabDx: number; grabDy: number };
+  | { kind: "pan"; lastX: number; lastY: number; startX: number; startY: number; moved: boolean }
+  | { kind: "token"; tokenId: string; startX: number; startY: number; moved: boolean; grabDx: number; grabDy: number }
+  | { kind: "ruler" };
 
 export class MapView extends Component<Props> {
   private svg = createRef<SVGSVGElement>();
@@ -39,12 +44,12 @@ export class MapView extends Component<Props> {
   }
 
   /** Pointer position relative to the SVG element, in screen pixels. */
-  private local(e: { clientX: number; clientY: number }): { x: number; y: number } {
+  private local(e: { clientX: number; clientY: number }): Point {
     const rect = this.svg.current?.getBoundingClientRect();
     return { x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) };
   }
 
-  private toMap(e: { clientX: number; clientY: number }) {
+  private toMap(e: { clientX: number; clientY: number }): Point {
     const p = this.local(e);
     return screenToMap(this.view, p.x, p.y);
   }
@@ -55,9 +60,33 @@ export class MapView extends Component<Props> {
     this.props.app.setView(this.props.map.id, zoomAt(this.view, wheelFactor(e.deltaY), p.x, p.y));
   };
 
+  private startPan(e: PointerEvent): void {
+    this.capture(e);
+    this.gesture = { kind: "pan", lastX: e.clientX, lastY: e.clientY, startX: e.clientX, startY: e.clientY, moved: false };
+  }
+
+  private ping(e: PointerEvent): void {
+    const m = this.toMap(e);
+    this.props.app.send({ type: "ping", mapId: this.props.map.id, x: m.x, y: m.y });
+  }
+
   private onPointerDown = (e: PointerEvent): void => {
+    if (e.button === 1) return this.startPan(e);
     if (e.button !== 0) return;
     const { app, state, map } = this.props;
+
+    if (e.altKey || state.tool === "ping") return this.ping(e);
+
+    if (state.tool === "ruler") {
+      const m = this.toMap(e);
+      this.capture(e);
+      app.setRuler({ mapId: map.id, from: m, to: m });
+      this.gesture = { kind: "ruler" };
+      return;
+    }
+
+    if (state.tool === "calibrate") return this.startPan(e);
+
     const tokenEl = (e.target as Element).closest?.("[data-token-id]");
     const tokenId = tokenEl?.getAttribute("data-token-id");
     const token = tokenId ? state.table?.tokens.find((t) => t.id === tokenId) : undefined;
@@ -65,40 +94,46 @@ export class MapView extends Component<Props> {
     if (state.placing && !token) {
       const m = this.toMap(e);
       const templateId = "templateId" in state.placing ? state.placing.templateId : undefined;
-      const size = templateId ? (state.table?.templates.find((t) => t.id === templateId)?.size ?? 1) : 1;
+      const template = templateId ? state.table?.templates.find((t) => t.id === templateId) : undefined;
+      const size = tokenSize({ size: template ? template.size : null }, map.grid);
       const cell = snapToGrid(m.x, m.y, map.grid, size);
       app.send({ type: "token.create", mapId: map.id, ...cell, ...(templateId ? { templateId } : {}) });
       if (!e.shiftKey) app.setPlacing(null);
       return;
     }
 
+    if (!token) return this.startPan(e);
     this.capture(e);
-    if (token) {
-      const m = this.toMap(e);
-      const origin = cellToPixel(token, map.grid);
-      const half = (token.size * map.grid.cellSize) / 2;
-      this.gesture = {
-        kind: "token",
-        tokenId: token.id,
-        startX: e.clientX,
-        startY: e.clientY,
-        moved: false,
-        grabDx: m.x - (origin.x + half),
-        grabDy: m.y - (origin.y + half),
-      };
-    } else {
-      this.gesture = { kind: "pan", lastX: e.clientX, lastY: e.clientY };
-    }
+    const m = this.toMap(e);
+    const rect = tokenRect(token, tokenSize(token, map.grid), map.grid);
+    this.gesture = {
+      kind: "token",
+      tokenId: token.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false,
+      grabDx: m.x - (rect.x + rect.width / 2),
+      grabDy: m.y - (rect.y + rect.height / 2),
+    };
   };
 
   private onPointerMove = (e: PointerEvent): void => {
     const g = this.gesture;
-    if (!g) return;
     const { app, state, map } = this.props;
+    if (!g) {
+      // Live preview of the cell being calibrated.
+      if (state.calibration?.first) app.setCalibration({ ...state.calibration, hover: this.toMap(e) });
+      return;
+    }
     if (g.kind === "pan") {
       app.setView(map.id, panBy(this.view, e.clientX - g.lastX, e.clientY - g.lastY));
       g.lastX = e.clientX;
       g.lastY = e.clientY;
+      if (Math.hypot(e.clientX - g.startX, e.clientY - g.startY) >= DRAG_THRESHOLD) g.moved = true;
+      return;
+    }
+    if (g.kind === "ruler") {
+      if (state.ruler) app.setRuler({ ...state.ruler, to: this.toMap(e) });
       return;
     }
     if (!g.moved && Math.hypot(e.clientX - g.startX, e.clientY - g.startY) < DRAG_THRESHOLD) return;
@@ -106,21 +141,40 @@ export class MapView extends Component<Props> {
     const token = state.table?.tokens.find((t) => t.id === g.tokenId);
     if (!token) return;
     const m = this.toMap(e);
-    const cell = snapToGrid(m.x - g.grabDx, m.y - g.grabDy, map.grid, token.size);
+    const cell = snapToGrid(m.x - g.grabDx, m.y - g.grabDy, map.grid, tokenSize(token, map.grid));
     const current = state.drag?.tokenId === token.id ? state.drag : token;
     if (cell.col === current.col && cell.row === current.row) return;
     app.setDrag({ tokenId: token.id, ...cell });
     app.send({ type: "token.move", tokenId: token.id, ...cell });
   };
 
-  private onPointerUp = (): void => {
+  private onPointerUp = (e: PointerEvent): void => {
     const g = this.gesture;
     this.gesture = null;
+    const { app, state } = this.props;
     if (g?.kind === "token") {
-      if (!g.moved) this.props.app.select({ kind: "token", id: g.tokenId });
-      this.props.app.setDrag(null);
+      if (!g.moved) app.select({ kind: "token", id: g.tokenId });
+      app.setDrag(null);
     }
+    if (g?.kind === "pan" && !g.moved && state.tool === "calibrate") this.calibrationClick(this.toMap(e));
   };
+
+  private calibrationClick(point: Point): void {
+    const { app, state, map } = this.props;
+    const first = state.calibration?.mapId === map.id ? state.calibration.first : null;
+    if (!first) {
+      app.setCalibration({ mapId: map.id, first: point, hover: point });
+      return;
+    }
+    const geometry = gridFromCorners(first, point);
+    if (!geometry) {
+      app.notify("Those two clicks are too close: click two opposite corners of one cell.");
+      app.setCalibration({ mapId: map.id, first: null, hover: null });
+      return;
+    }
+    app.send({ type: "map.setGrid", mapId: map.id, grid: geometry });
+    app.setTool("select");
+  }
 
   private capture(e: PointerEvent): void {
     try {
@@ -144,10 +198,12 @@ export class MapView extends Component<Props> {
     const view = this.view;
     const tokens = (state.table?.tokens ?? []).filter((t) => t.mapId === map.id);
     const selectedId = state.selection?.kind === "token" ? state.selection.id : null;
+    const ruler = state.ruler?.mapId === map.id ? state.ruler : null;
+    const calibration = state.calibration?.mapId === map.id ? state.calibration : null;
     return (
       <svg
         ref={this.svg}
-        class={`map ${state.placing ? "is-placing" : ""}`}
+        class={`map tool-${state.tool} ${state.placing ? "is-placing" : ""}`}
         data-testid="map"
         onPointerDown={this.onPointerDown}
         onPointerMove={this.onPointerMove}
@@ -171,6 +227,13 @@ export class MapView extends Component<Props> {
               />
             ))}
           </g>
+          {calibration?.first && <CalibrationPreview first={calibration.first} hover={calibration.hover} zoom={view.zoom} />}
+          {ruler && <Ruler from={ruler.from} to={ruler.to} map={map} zoom={view.zoom} />}
+          {state.pings
+            .filter((p) => p.mapId === map.id)
+            .map((p) => (
+              <Ping key={p.id} ping={p} zoom={view.zoom} />
+            ))}
         </g>
       </svg>
     );
@@ -179,24 +242,23 @@ export class MapView extends Component<Props> {
 
 /** SVG path of the main grid lines (cell borders). */
 export function gridPath(map: TableMap): string {
-  const { cellSize: c, offsetX: ox, offsetY: oy, cols, rows } = map.grid;
+  const { cellWidth: w, cellHeight: h, offsetX: ox, offsetY: oy, cols, rows } = map.grid;
   const parts: string[] = [];
-  for (let i = 0; i <= cols; i++) parts.push(`M${ox + i * c} ${oy}V${oy + rows * c}`);
-  for (let j = 0; j <= rows; j++) parts.push(`M${ox} ${oy + j * c}H${ox + cols * c}`);
+  for (let i = 0; i <= cols; i++) parts.push(`M${ox + i * w} ${oy}V${oy + rows * h}`);
+  for (let j = 0; j <= rows; j++) parts.push(`M${ox} ${oy + j * h}H${ox + cols * w}`);
   return parts.join("");
 }
 
 /** SVG path of the sub-cell lines inside each cell (empty when the grid is not split). */
 export function subGridPath(map: TableMap): string {
-  const { cellSize: c, offsetX: ox, offsetY: oy, cols, rows, subdivisions: n } = map.grid;
+  const { cellWidth: w, cellHeight: h, offsetX: ox, offsetY: oy, cols, rows, subdivisions: n } = map.grid;
   if (n <= 1) return "";
-  const step = c / n;
   const parts: string[] = [];
   for (let i = 0; i < cols * n; i++) {
-    if (i % n !== 0) parts.push(`M${ox + i * step} ${oy}V${oy + rows * c}`);
+    if (i % n !== 0) parts.push(`M${ox + (i * w) / n} ${oy}V${oy + rows * h}`);
   }
   for (let j = 0; j < rows * n; j++) {
-    if (j % n !== 0) parts.push(`M${ox} ${oy + j * step}H${ox + cols * c}`);
+    if (j % n !== 0) parts.push(`M${ox} ${oy + (j * h) / n}H${ox + cols * w}`);
   }
   return parts.join("");
 }
@@ -212,19 +274,20 @@ function Grid({ map }: { map: TableMap }) {
   } as const;
   return (
     <g class="grid-layer">
-      {sub && <path class="grid-sub" d={sub} {...common} stroke-opacity={map.grid.opacity * 0.5} stroke-dasharray="3 3" />}
+      {sub && <path class="grid-sub" d={sub} {...common} stroke-opacity={Math.min(1, map.grid.opacity * 0.7)} stroke-dasharray="3 3" />}
       <path class="grid" d={gridPath(map)} {...common} stroke-opacity={map.grid.opacity} />
     </g>
   );
 }
 
 function TokenShape({ token, map, selected }: { token: Token; map: TableMap; selected: boolean }) {
-  const { x, y } = cellToPixel(token, map.grid);
-  const side = token.size * map.grid.cellSize;
-  const r = side / 2;
-  const inset = Math.max(1, side * 0.04);
+  const size = tokenSize(token, map.grid);
+  const { x, y, width: w, height: h } = tokenRect(token, size, map.grid);
+  const inset = Math.max(0.5, Math.min(w, h) * 0.04);
+  const rx = w / 2 - inset;
+  const ry = h / 2 - inset;
   const ratio = hpRatio(token.stats.hp);
-  const barH = Math.max(4, map.grid.cellSize * 0.1);
+  const barH = Math.max(3, Math.min(map.grid.cellHeight * 0.1, h * 0.15));
   const clipId = `clip-${token.id}`;
   return (
     <g
@@ -232,39 +295,95 @@ function TokenShape({ token, map, selected }: { token: Token; map: TableMap; sel
       data-token-id={token.id}
       data-col={token.col}
       data-row={token.row}
+      data-size={size}
       transform={`translate(${x} ${y})`}
     >
       <title>{token.stats.name}</title>
-      <circle class="token-body" cx={r} cy={r} r={r - inset} fill={token.color} />
+      <ellipse class="token-body" cx={w / 2} cy={h / 2} rx={rx} ry={ry} fill={token.color} />
       {token.image && (
         <>
           <clipPath id={clipId}>
-            <circle cx={r} cy={r} r={r - inset} />
+            <ellipse cx={w / 2} cy={h / 2} rx={rx} ry={ry} />
           </clipPath>
           <image
             href={imageUrl(token.image)}
             x={inset}
             y={inset}
-            width={side - 2 * inset}
-            height={side - 2 * inset}
+            width={w - 2 * inset}
+            height={h - 2 * inset}
             clip-path={`url(#${clipId})`}
             preserveAspectRatio="xMidYMid slice"
           />
         </>
       )}
-      <circle class="token-ring" cx={r} cy={r} r={r - inset} fill="none" />
-      <text class="token-label" x={r} y={-4} text-anchor="middle" font-size={Math.max(10, map.grid.cellSize * 0.2)}>
+      <ellipse class="token-ring" cx={w / 2} cy={h / 2} rx={rx} ry={ry} fill="none" />
+      <text class="token-label" x={w / 2} y={-4} text-anchor="middle" font-size={Math.max(8, map.grid.cellHeight * 0.2)}>
         {token.stats.name}
       </text>
-      <g class="hp-bar" transform={`translate(${inset} ${side + 2})`}>
-        <rect class="hp-bar-bg" width={side - 2 * inset} height={barH} />
+      <g class="hp-bar" transform={`translate(${inset} ${h + 2})`}>
+        <rect class="hp-bar-bg" width={w - 2 * inset} height={barH} />
         <rect
           class="hp-bar-fill"
-          width={(side - 2 * inset) * ratio}
+          width={(w - 2 * inset) * ratio}
           height={barH}
           fill={ratio > 0.5 ? "#2ecc71" : ratio > 0.25 ? "#f1c40f" : "#e74c3c"}
         />
       </g>
+    </g>
+  );
+}
+
+/** Formats a distance with at most one decimal: 7.5, 10. */
+function fmt(n: number): string {
+  return String(Math.round(n * 10) / 10);
+}
+
+export function Ruler({ from, to, map, zoom }: { from: Point; to: Point; map: TableMap; zoom: number }) {
+  const { cells, feet } = rulerDistance(from, to, map.grid);
+  const s = 1 / zoom; // keep marks and text the same size on screen at any zoom
+  return (
+    <g class="ruler" data-testid="ruler" pointer-events="none">
+      <line class="ruler-line" x1={from.x} y1={from.y} x2={to.x} y2={to.y} vector-effect="non-scaling-stroke" />
+      <circle class="ruler-end" cx={from.x} cy={from.y} r={4 * s} />
+      <circle class="ruler-end" cx={to.x} cy={to.y} r={4 * s} />
+      <text class="ruler-label" x={to.x + 10 * s} y={to.y - 10 * s} font-size={15 * s}>
+        {`${fmt(feet)} ft`}
+        <tspan class="ruler-cells" font-size={12 * s}>{` (${fmt(cells)} cells)`}</tspan>
+      </text>
+    </g>
+  );
+}
+
+function CalibrationPreview({ first, hover, zoom }: { first: Point; hover: Point | null; zoom: number }) {
+  const s = 1 / zoom;
+  const to = hover ?? first;
+  const x = Math.min(first.x, to.x);
+  const y = Math.min(first.y, to.y);
+  const w = Math.abs(to.x - first.x);
+  const h = Math.abs(to.y - first.y);
+  return (
+    <g class="calibration" data-testid="calibration" pointer-events="none">
+      <rect class="calibration-cell" x={x} y={y} width={w} height={h} vector-effect="non-scaling-stroke" />
+      <path class="calibration-mark" d={`M${first.x - 8 * s} ${first.y}h${16 * s}M${first.x} ${first.y - 8 * s}v${16 * s}`} vector-effect="non-scaling-stroke" />
+      {w > 0 && h > 0 && (
+        <text class="ruler-label" x={x + w + 6 * s} y={y + h + 14 * s} font-size={13 * s}>
+          {`${fmt(w)} × ${fmt(h)} px`}
+        </text>
+      )}
+    </g>
+  );
+}
+
+function Ping({ ping, zoom }: { ping: ActivePing; zoom: number }) {
+  const r = 48 / zoom;
+  return (
+    <g class="ping" data-testid="ping" transform={`translate(${ping.x} ${ping.y})`} pointer-events="none">
+      <circle class="ping-ring" r={r} stroke={ping.color} vector-effect="non-scaling-stroke" />
+      <circle class="ping-ring ping-ring-late" r={r} stroke={ping.color} vector-effect="non-scaling-stroke" />
+      <circle class="ping-dot" r={4 / zoom} fill={ping.color} />
+      <text class="ping-label" y={-r * 0.35} font-size={12 / zoom} text-anchor="middle">
+        {ping.name}
+      </text>
     </g>
   );
 }

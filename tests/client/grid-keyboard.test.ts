@@ -53,11 +53,11 @@ describe("number parsing", () => {
 describe("UI: grid settings", () => {
   test("cell size and offsets accept sub-pixel values (dot or comma)", () => {
     ui = mountWithGrid({}, false);
-    changeValue(ui.$("input[name=cellSize]") as HTMLInputElement, "70,25");
+    changeValue(ui.$("input[name=cellWidth]") as HTMLInputElement, "70,25");
     changeValue(ui.$("input[name=offsetX]") as HTMLInputElement, "3.5");
     changeValue(ui.$("input[name=offsetY]") as HTMLInputElement, "-0.75");
     assert.deepEqual(ui.sent, [
-      { type: "map.setGrid", mapId: "map1", grid: { cellSize: 70.25 } },
+      { type: "map.setGrid", mapId: "map1", grid: { cellWidth: 70.25, cellHeight: 70.25 } },
       { type: "map.setGrid", mapId: "map1", grid: { offsetX: 3.5 } },
       { type: "map.setGrid", mapId: "map1", grid: { offsetY: -0.75 } },
     ]);
@@ -100,7 +100,7 @@ describe("UI: grid settings", () => {
     ui = mountWithGrid({ subdivisions: 2 }, false);
     const svg = ui.$("svg[data-testid=map]");
     // Token (2,3) on 50px cells: centre at (125, 175). Drag 25px right = half a cell.
-    pointer(svg.querySelector('[data-token-id="tok1"] circle')!, "pointerdown", { clientX: 125, clientY: 175 });
+    pointer(svg.querySelector('[data-token-id="tok1"] ellipse')!, "pointerdown", { clientX: 125, clientY: 175 });
     pointer(svg, "pointermove", { clientX: 150, clientY: 175 });
     assert.deepEqual(ui.sent, [{ type: "token.move", tokenId: "tok1", col: 2.5, row: 3 }]);
     assert.equal(svg.querySelector('[data-token-id="tok1"]')!.getAttribute("transform"), "translate(125 150)");
@@ -152,7 +152,7 @@ describe("keyboard", () => {
   test("a token clicked on the map can then be moved with the keyboard", () => {
     ui = mountWithGrid({}, false);
     const svg = ui.$("svg[data-testid=map]");
-    pointer(svg.querySelector('[data-token-id="tok1"] circle')!, "pointerdown", { clientX: 125, clientY: 175 });
+    pointer(svg.querySelector('[data-token-id="tok1"] ellipse')!, "pointerdown", { clientX: 125, clientY: 175 });
     pointer(svg, "pointerup", { clientX: 125, clientY: 175 });
     handleKeyDown(ui.app, key("ArrowDown"));
     assert.deepEqual(ui.sent, [{ type: "token.move", tokenId: "tok1", col: 2, row: 4 }]);

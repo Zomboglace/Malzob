@@ -3,6 +3,7 @@ import { LIMITS } from "../../shared/validate.ts";
 import type { Controller } from "../controller.ts";
 import type { ClientState } from "../store.ts";
 import { MapsPanel } from "./MapsPanel.tsx";
+import { MapToolbar } from "./MapToolbar.tsx";
 import { MapView } from "./MapView.tsx";
 import { StatSheet } from "./StatSheet.tsx";
 import { TemplatesPanel } from "./TemplatesPanel.tsx";
@@ -30,13 +31,29 @@ export function App({ app, state }: { app: Controller; state: ClientState }) {
         </div>
       )}
       <div class="layout">
-        <nav class="sidebar">
-          <MapsPanel app={app} state={state} />
-          <TemplatesPanel app={app} state={state} />
-        </nav>
+        {state.sidebarCollapsed ? (
+          <nav class="sidebar is-collapsed" data-testid="sidebar">
+            <button type="button" class="sidebar-toggle" title="Show the sidebar" aria-label="Show the sidebar" onClick={() => app.toggleSidebar()}>
+              »
+            </button>
+          </nav>
+        ) : (
+          <nav class="sidebar" data-testid="sidebar">
+            <div class="sidebar-header">
+              <button type="button" class="sidebar-toggle" title="Hide the sidebar" aria-label="Hide the sidebar" onClick={() => app.toggleSidebar()}>
+                «
+              </button>
+            </div>
+            <MapsPanel app={app} state={state} />
+            <TemplatesPanel app={app} state={state} />
+          </nav>
+        )}
         <main class="stage">
           {activeMap ? (
-            <MapView app={app} state={state} map={activeMap} />
+            <>
+              <MapView app={app} state={state} map={activeMap} />
+              <MapToolbar app={app} state={state} />
+            </>
           ) : (
             <p class="empty">{table ? "No map yet. Create one in the sidebar." : "Loading the table…"}</p>
           )}

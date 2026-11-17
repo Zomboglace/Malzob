@@ -4,11 +4,12 @@
  *   Arrow keys        move the selected token by one step (a sub-cell when
  *                     the grid is split, otherwise one cell)
  *   Shift + arrows    move it by one full cell
- *   Escape            cancel placing, otherwise close the stat sheet
+ *   Escape            leave the current tool (ruler, ping, grid setup), else
+ *                     cancel placing, else close the stat sheet
  *
  * Keys typed into form fields are ignored.
  */
-import { moveBy, snapStep } from "../shared/grid.ts";
+import { moveBy, snapStep, tokenSize } from "../shared/grid.ts";
 import type { Controller } from "./controller.ts";
 
 const ARROWS: Record<string, [number, number]> = {
@@ -40,7 +41,8 @@ export function handleKeyDown(app: Controller, e: KeyLike): boolean {
   const state = app.store.get();
 
   if (e.key === "Escape") {
-    if (state.placing) app.setPlacing(null);
+    if (state.tool !== "select" || state.ruler) app.setTool("select");
+    else if (state.placing) app.setPlacing(null);
     else app.select(null);
     return true;
   }
@@ -54,7 +56,7 @@ export function handleKeyDown(app: Controller, e: KeyLike): boolean {
 
   e.preventDefault(); // do not scroll the page
   const step = e.shiftKey ? 1 : snapStep(map.grid);
-  const next = moveBy(token, dir[0], dir[1], step, map.grid, token.size);
+  const next = moveBy(token, dir[0], dir[1], step, map.grid, tokenSize(token, map.grid));
   if (next.col !== token.col || next.row !== token.row) {
     app.send({ type: "token.move", tokenId: token.id, ...next });
   }

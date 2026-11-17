@@ -24,7 +24,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 button.icon { padding: 2px 6px; background: transparent; border-color: transparent; }
 button.danger { border-color: var(--danger); color: #f3b3b1; }
 button.is-on { background: var(--accent); color: #111; }
-input, textarea {
+input, textarea, select {
   background: #1a1b20; border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; min-width: 0;
 }
 input[type="color"] { padding: 0; width: 40px; height: 28px; }
@@ -48,9 +48,13 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .notice { display: flex; justify-content: space-between; align-items: center; background: #5a2b2b; padding: 6px 12px; }
 
 .layout { flex: 1; display: flex; min-height: 0; }
-.sidebar { width: 280px; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--border); }
+/* The sidebar has a fixed width: its content must shrink to it, never scroll sideways. */
+.sidebar { flex: none; width: 280px; overflow-y: auto; overflow-x: hidden; background: var(--panel); border-right: 1px solid var(--border); }
+.sidebar.is-collapsed { width: 32px; display: flex; flex-direction: column; align-items: center; padding-top: 8px; }
+.sidebar-header { display: flex; justify-content: flex-end; padding: 6px 8px 0; }
+.sidebar-toggle { padding: 2px 8px; }
 .panel { padding: 12px; border-bottom: 1px solid var(--border); }
-.stage { flex: 1; position: relative; overflow: hidden; background: #111; }
+.stage { flex: 1; min-width: 0; position: relative; overflow: hidden; background: #111; }
 .empty { color: var(--muted); text-align: center; margin-top: 30vh; }
 
 .map-list, .template-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -59,19 +63,25 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .map-list li.is-active .map-activate { border-color: var(--accent); color: var(--accent); }
 .swatch { width: 12px; height: 12px; border-radius: 50%; flex: none; }
 .inline-form { display: flex; gap: 4px; }
-.inline-form input { flex: 1; }
+.inline-form input { flex: 1 1 0; width: 0; }
 .place-blank { width: 100%; margin-bottom: 8px; }
 .active-map { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
 .hint { color: var(--muted); font-size: 12px; margin: 0; }
 fieldset { border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
-.field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); min-width: 0; flex: 1; }
-.field input, .field textarea { color: var(--text); }
+.field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); min-width: 0; flex: 1 1 0; }
+/* Inputs have an intrinsic width (~20 characters); make them fill the field instead. */
+.field input, .field textarea, .field select { color: var(--text); width: 100%; min-width: 0; }
 .field-check { flex-direction: row; align-items: center; gap: 6px; }
-.row { display: flex; gap: 6px; }
+.field-check input { width: auto; }
+.field-color input { width: 40px; }
+.field-file input { font-size: 12px; }
+.row { display: flex; gap: 6px; min-width: 0; }
+.row > * { min-width: 0; }
+.calibrate-start { width: 100%; }
 
 .map { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; user-select: none; }
-.map.is-placing { cursor: crosshair; }
+.map.is-placing, .map.tool-ruler, .map.tool-ping, .map.tool-calibrate { cursor: crosshair; }
 .map-background-empty { fill: #3a3d33; }
 .token { cursor: pointer; }
 .token-ring { stroke: #111; stroke-width: 2; vector-effect: non-scaling-stroke; }
@@ -79,7 +89,7 @@ legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
 .token-label { fill: #fff; paint-order: stroke; stroke: #000; stroke-width: 3px; pointer-events: none; }
 .hp-bar-bg { fill: #000; opacity: 0.6; }
 
-.stat-sheet { width: 320px; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.stat-sheet { flex: none; width: 320px; overflow-y: auto; overflow-x: hidden; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 .sheet-header { display: flex; justify-content: space-between; align-items: center; }
 .abilities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .ability { display: flex; flex-direction: column; align-items: center; background: var(--panel-2); border-radius: 6px; padding: 4px; }
@@ -88,3 +98,20 @@ legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
 .conditions { display: grid; grid-template-columns: 1fr 1fr; }
 .condition { display: flex; align-items: center; gap: 4px; font-size: 12px; text-transform: capitalize; }
 .sheet-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Map tools */
+.map-overlay { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
+.toolbar { display: flex; gap: 4px; background: rgba(42, 44, 51, 0.92); padding: 4px; border-radius: 6px; pointer-events: auto; }
+.tool-hint { margin: 0; background: rgba(0, 0, 0, 0.7); padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+.ruler-line { stroke: #ffd54a; stroke-width: 2; stroke-dasharray: 6 4; }
+.ruler-end { fill: #ffd54a; }
+.ruler-label { fill: #fff; paint-order: stroke; stroke: #000; stroke-width: 3px; font-weight: bold; }
+.ruler-cells { font-weight: normal; }
+.calibration-cell { fill: rgba(212, 162, 76, 0.2); stroke: var(--accent); stroke-width: 2; }
+.calibration-mark { stroke: var(--accent); stroke-width: 2; }
+.ping-ring { fill: none; stroke-width: 3; transform-box: fill-box; transform-origin: center; animation: ping-grow 1.5s ease-out forwards; }
+.ping-ring-late { animation: ping-grow 1.5s ease-out 0.25s both; }
+.ping-dot { animation: ping-fade 1.5s ease-in forwards; }
+.ping-label { fill: #fff; paint-order: stroke; stroke: #000; stroke-width: 3px; animation: ping-fade 1.5s ease-in forwards; }
+@keyframes ping-grow { from { transform: scale(0.05); opacity: 1; } to { transform: scale(1); opacity: 0; } }
+@keyframes ping-fade { from { opacity: 1; } to { opacity: 0; } }

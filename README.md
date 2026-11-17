@@ -11,13 +11,18 @@ very few dependencies, and tests for every feature.
 
 - **Maps**: several maps, one active map shown to everyone; a background image
   per map (PNG, JPEG or WebP, up to 15 MiB, stored on the server by content hash).
-- **Grid**: cell size and X/Y offset with sub-pixel precision to align with
-  the image, columns/rows (derived from the image by default), line colour and
-  opacity, show/hide, distance per cell (5 ft by default, editable).
-  Cells can be split (2 × 2, 3 × 3, …) so tokens move by sub-cells.
+- **Grid**: cell width/height (non-square allowed) and X/Y offset with
+  sub-pixel precision to align with the image, or **set it with two clicks** on
+  opposite corners of one cell; columns/rows (derived from the image by
+  default), line colour and opacity, show/hide, distance per cell (5 ft by
+  default, editable). Cells can be split (2 × 2, 3 × 3, …) so tokens move by
+  sub-cells.
 - **Tokens**: place, drag or move with the arrow keys (snapped to the grid or
-  its sub-cells and kept inside it), delete,
-  duplicate, size in cells (1×1, 2×2, …), name, colour or image, HP bar.
+  its sub-cells and kept inside it), delete, duplicate, name, colour or image,
+  HP bar. Size in cells, fractional sizes included (½ cell for Tiny…), either
+  per token or from a default size set on each map.
+- **Ruler** to measure any distance, anywhere, in feet and cells.
+- **Ping**: show everyone a spot with an expanding, fading circle.
 - **Templates** ("monster/character models"): a library of templates with a
   stat sheet. Placing a template creates a token with its own copy of the stats.
   Editing a token never changes its template; editing a template never changes
@@ -27,11 +32,12 @@ very few dependencies, and tests for every feature.
   bonuses, conditions, notes. Edits sync live.
 - **Multi-user**: everyone picks a display name; connected users are listed;
   clients reconnect and resync automatically; state survives a server restart.
-- **Local view**: pan (drag empty space) and zoom (mouse wheel), per client.
+- **Local view**: pan (drag empty space or middle-button drag) and zoom (mouse
+  wheel), per client. The sidebar can be hidden.
 
 Not there yet (see [docs/architecture.md](docs/architecture.md) for how they
 would fit): GM/player roles, fog of war, walls and line of sight, lighting,
-drawing, initiative tracker, measuring, dice, chat, accounts.
+drawing, initiative tracker, dice, chat, accounts.
 
 ## Requirements
 
@@ -68,10 +74,14 @@ Environment variables:
 To play with friends on your network, share `http://<your-ip>:3000`. There is
 no authentication: anyone who can reach the server can edit the table.
 
-Quick tour: create a map in the left sidebar, upload a background image, adjust
-the grid until it matches the image, add a template (e.g. "Goblin"), click
-**Place** then click on the map. Click a token to open its stat sheet; drag it
-to move it.
+Quick tour: create a map in the left sidebar and upload a background image.
+To align the grid, zoom in on the image, click **Set grid** and click two
+opposite corners of one cell (fine-tune with the number fields if needed).
+Add a template (e.g. "Goblin"), click **Place** then click on the map. Click a
+token to open its stat sheet; drag it to move it.
+
+Map tools (buttons over the map): **Select** (default), **Ruler** (drag to
+measure), **Ping** (click to show a spot to everyone), **Set grid** (two clicks).
 
 Keyboard:
 
@@ -79,10 +89,14 @@ Keyboard:
 |-----|--------|
 | arrows | move the selected token by one step (one sub-cell when cells are split, otherwise one cell) |
 | Shift + arrows | move the selected token by one full cell |
-| Esc | cancel placing, otherwise close the stat sheet |
+| Esc | leave the current tool, otherwise cancel placing, otherwise close the stat sheet |
 | Shift + click (while placing) | place several tokens |
+| Alt + click | ping, whatever the tool |
+| middle-button drag | pan, whatever the tool |
 
-Decimal fields (cell size, offsets, feet per cell) accept `70.5` or `70,5`.
+Decimal fields (cell width/height, offsets, feet per cell) accept `70.5` or
+`70,5`. Editing the width of square cells keeps them square; edit the height
+afterwards for non-square cells.
 
 ## Test
 

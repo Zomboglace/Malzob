@@ -9,6 +9,7 @@ import { LIMITS } from "../../shared/validate.ts";
 import type { Controller } from "../controller.ts";
 import type { ClientState, Selection } from "../store.ts";
 import { ColorField, ImagePicker, NotesField, NumberField, TextField } from "./fields.tsx";
+import { SizeSelect } from "./SizeSelect.tsx";
 
 interface Props {
   app: Controller;
@@ -28,7 +29,10 @@ export function StatSheet({ app, state, selection }: Props) {
       : app.send({ type: "template.update", templateId: item.id, changes });
   const stats = (patch: StatsPatch) => update({ stats: patch });
   const s = item.stats;
-  const { stat, bonus, score, tokenSize } = LIMITS;
+  const { stat, bonus, score } = LIMITS;
+  // Tokens follow their map's default size; templates follow the active map's.
+  const mapId = selection.kind === "token" ? (item as Token).mapId : table?.activeMapId;
+  const defaultSize = table?.maps.find((m) => m.id === mapId)?.grid.defaultTokenSize ?? 1;
 
   return (
     <aside class="panel stat-sheet" data-testid="stat-sheet" data-kind={selection.kind} key={`${selection.kind}-${item.id}`}>
@@ -96,7 +100,7 @@ export function StatSheet({ app, state, selection }: Props) {
       <fieldset class="appearance">
         <legend>Appearance</legend>
         <div class="row">
-          <NumberField label="Size (cells)" name="size" value={item.size} min={tokenSize.min} max={tokenSize.max} onCommit={(size) => update({ size })} />
+          <SizeSelect label="Size" name="size" value={item.size} defaultSize={defaultSize} onCommit={(size) => update({ size })} />
           <ColorField label="Colour" name="color" value={item.color} onCommit={(color) => update({ color })} />
         </div>
         <ImagePicker
