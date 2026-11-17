@@ -1,0 +1,107 @@
+# Architecture
+
+Malzob is one Node process (HTTP + WebSocket) and a browser client. The server
+holds the only authoritative copy of the table; clients send intents and
+render whatever state the server broadcasts.
+
+```
+ browser A ─┐                    ┌───────────────── Node server ─────────────────┐
+            │  intents (JSON)    │                                                │
+            ├──────── /ws ──────►│  Table: parse → validate → reduce → save      │
+ browser B ─┤                    │                   │           │     │         │
+            │◄── state / users ──│◄──── broadcast ───┘           │   data/state.json
+            │                    │                               │                │
+            ├── POST /api/images►│  ImageStore ──────────────────┴─► data/images/ │
+            └── GET  /, /images ►│  static files (build/public)                   │
+                                 └────────────────────────────────────────────────┘
+```
+
+## Layers
+
+### `src/shared/` — pure logic, no I/O
+
+Imported by both sides; everything here is deterministic and unit-tested.
+
+| file           | role |
+|----------------|------|
+| `types.ts`     | the data model: `TableState`, `TableMap`, `GridSettings`, `Token`, `TokenTemplate`, `StatSheet`, `ImageRef`, `User` |
+| `grid.ts`      | grid maths: default grid, pixel ↔ cell, snapping, clamping, feet |
+| `stats.ts`     | D&D 5e: ability modifiers, conditions list, default sheet, sheet patches |
+| `protocol.ts`  | the WebSocket message types (see [protocol.md](protocol.md)) |
+| `validate.ts`  | structural validation of incoming messages, with `LIMITS` |
+| `reducer.ts`   | `applyIntent(state, intent, ctx)`: the only place where the state changes |
+| `imageInfo.ts` | reads format and size of PNG/JPEG/WebP from bytes |
+
+The reducer never mutates its input and never generates ids or reads files
+itself: ids and image lookups come from a `ReducerContext`. That keeps it
+pure, so it can be tested in isolation and could later run on the client too
+(optimistic updates, replay, undo).
+
+### `src/server/` — Node
+
+| file        | role |
+|-------------|------|
+| `main.ts`   | entry point for `npm start`; reads `PORT`, `HOST`, `DATA_DIR` |
+| `app.ts`    | `startServer()`: wires HTTP, WebSocket, stores; used by main and tests |
+| `table.ts`  | `Table`: connected clients, users, message handling, broadcast |
+| `http.ts`   | static files, image upload and image download |
+| `images.ts` | `ImageStore`: images on disk, named by sha256 |
+| `store.ts`  | `StateStore`: debounced, atomic JSON persistence |
+
+Message handling in `Table.receive`:
+
+1. `JSON.parse` — failure → `error bad_json`
+2. `validateClientMessage` — failure → `error invalid`
+3. session messages (`hello`, `user.rename`) are handled directly
+4. everything else goes to `applyIntent`; a rejection (`not_found`) is sent
+   back to the sender only
+5. on success: replace the state, schedule a save, broadcast `state` to all
+
+### `src/client/` — browser (Preact, SVG)
+
+| file            | role |
+|-----------------|------|
+| `main.tsx`      | entry point; wires store, connection, controller, UI |
+| `store.ts`      | `ClientState` (server state + local UI state) and a tiny observable store |
+| `controller.ts` | the API the UI calls: `send`, `select`, `setView`, `upload`… and server-message handling |
+| `connection.ts` | WebSocket with exponential-backoff reconnection; re-sends `hello` on each open |
+| `view.ts`       | pan/zoom maths (local to each client) |
+| `upload.ts`     | image upload over HTTP |
+| `ui/App.tsx`    | layout, join form, user list |
+| `ui/MapView.tsx`| the SVG map: background, grid, tokens, drag, pan, zoom, placing |
+| `ui/MapsPanel.tsx`, `ui/TemplatesPanel.tsx`, `ui/StatSheet.tsx` | sidebar panels and the 5e sheet |
+| `ui/fields.tsx` | inputs that commit on change and are not overwritten while focused |
+
+The whole app re-renders on every store change (`render(<App/>)` is
+synchronous), which keeps the UI simple and makes tests deterministic. Local
+UI state (selection, pan/zoom, drag preview, "placing" tool) lives in the
+client store, never on the server.
+
+The map is SVG rather than `<canvas>` so that tests can inspect it: every
+token is a `<g data-token-id=…>` whose transform reflects its cell.
+
+## Data and persistence
+
+- `data/state.json` — the whole `TableState`, written atomically
+  (`state.json.tmp` then rename) at most every 200 ms and on shutdown. A
+  corrupt file is moved aside (`state.json.corrupt-<time>`) and the server
+  starts empty.
+- `data/images/<sha256>.<ext>` — uploaded images, deduplicated by content.
+- Connected users are not persisted.
+
+The data directory is configurable with `DATA_DIR` and ignored by git.
+
+## Design notes for future features
+
+- **Roles and permissions (GM/player)**: `Table.handle` is the single choke
+  point. Add a `role` to `User` and check it before `applyIntent`; the
+  broadcast step is where per-user filtering (hidden tokens, GM notes) would go.
+- **Fog of war, walls, lighting, drawings**: add arrays to `TableMap` (or
+  `TableState`), new intents in `protocol.ts` + `validate.ts` + `reducer.ts`,
+  and new SVG layers in `MapView` between the background and the tokens.
+- **Initiative tracker, dice, chat**: new top-level state (or a separate
+  message stream for ephemeral things like chat) and a new sidebar panel.
+- **Bandwidth**: the server broadcasts the full state on each change. `rev`
+  is already there to allow switching to patches later.
+- **Accounts/passwords**: would sit in `app.ts` at the WebSocket upgrade and
+  the HTTP upload route.
