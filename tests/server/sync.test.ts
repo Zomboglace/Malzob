@@ -100,6 +100,35 @@ describe("server: live sync between two clients", () => {
     assert.ok(!bob.messages.some((m) => m.type === "ping" && m.x === 2), "the burst is limited");
   });
 
+  test("rulers are relayed to the others, shown to newcomers, and removed when their owner leaves", async () => {
+    const mapId = server.table.getState().maps[0]!.id;
+    const line = { mapId, from: { x: 1, y: 2 }, to: { x: 300.25, y: 40 } };
+    bob.send({ type: "ruler", ruler: line });
+    const seen = await alice.next("ruler");
+    assert.deepEqual(seen.ruler, line);
+    assert.equal(seen.user.name, "Goblin 1");
+    await new Promise((r) => setTimeout(r, 30));
+    assert.ok(!bob.messages.some((m) => m.type === "ruler"), "the sender is not echoed");
+
+    // A newcomer gets the rulers currently shown, right after welcome.
+    const { client: carol } = await TestClient.join(server, "Carol Doe");
+    assert.deepEqual((await carol.next("ruler")).ruler, line);
+
+    // Unknown map: rejected.
+    bob.send({ type: "ruler", ruler: { ...line, mapId: "nope" } });
+    assert.equal((await bob.next("error")).code, "not_found");
+
+    // Bob leaves: his ruler disappears for the others.
+    const { client: dave } = await TestClient.join(server, "Dave Doe");
+    await dave.next("ruler");
+    await carol.close();
+    await bob.close();
+    const gone = await dave.next("ruler", (m) => m.ruler === null);
+    assert.equal(gone.user.name, "Goblin 1");
+    await dave.close();
+    bob = (await TestClient.join(server, "John Doe")).client;
+  });
+
   test("a reconnecting client resyncs with the full state", async () => {
     const { welcome } = await TestClient.join(server, "Jane Doe");
     assert.deepEqual(welcome.state, server.table.getState());

@@ -68,8 +68,8 @@ interface NumberProps extends FieldProps<number> {
   min?: number;
   max?: number;
   /**
-   * Decimal places accepted (default 0 = integers only). Decimal fields are
-   * text inputs so that both "70.5" and "70,5" are accepted in every locale.
+   * Decimal places accepted (default 0 = integers only). The arrows (and the
+   * up/down keys) still change the value by 1, keeping the decimals.
    */
   decimals?: number;
 }
@@ -99,19 +99,17 @@ export class NumberField extends LiveField<number, HTMLInputElement, NumberProps
     return (
       <label class={`field ${this.props.class ?? ""}`}>
         <span>{this.props.label}</span>
-        {decimal ? (
-          <input ref={this.ref} type="text" inputMode="decimal" name={this.props.name} onChange={this.commit} />
-        ) : (
-          <input
-            ref={this.ref}
-            type="number"
-            name={this.props.name}
-            min={this.props.min}
-            max={this.props.max}
-            step={1}
-            onChange={this.commit}
-          />
-        )}
+        <input
+          ref={this.ref}
+          type="number"
+          inputMode={decimal ? "decimal" : "numeric"}
+          name={this.props.name}
+          min={this.props.min}
+          max={this.props.max}
+          // "any" accepts decimals while the arrows still step by 1 (70.5 -> 71.5).
+          step={decimal ? "any" : 1}
+          onChange={this.commit}
+        />
       </label>
     );
   }

@@ -8,16 +8,17 @@
  *  - select:    drag a token to move it (snapped, sent live); click a token
  *               to open its sheet; drag empty space to pan; click while
  *               "placing" to create a token
- *  - ruler:     drag anywhere to measure (no snapping)
+ *  - ruler:     drag anywhere to measure (no snapping); shown to everyone
  *  - ping:      click to ping
- *  - calibrate: click two opposite corners of one cell; dragging still pans
+ *  - calibrate: mark two cells far apart, two opposite corners each (four
+ *               clicks); dragging still pans between clicks
  */
 import { Component, createRef } from "preact";
-import { gridFromCorners, type Point, rulerDistance, snapToGrid, tokenRect, tokenSize } from "../../shared/grid.ts";
+import { gridFromCells, type MarkedCell, type Point, rulerDistance, snapToGrid, tokenRect, tokenSize } from "../../shared/grid.ts";
 import { hpRatio } from "../../shared/stats.ts";
 import type { TableMap, Token } from "../../shared/types.ts";
 import type { Controller } from "../controller.ts";
-import type { ActivePing, ClientState } from "../store.ts";
+import type { ActivePing, Calibration, ClientState } from "../store.ts";
 import { imageUrl } from "../upload.ts";
 import { DEFAULT_VIEW, panBy, screenToMap, type View, wheelFactor, zoomAt } from "../view.ts";
 
@@ -121,7 +122,7 @@ export class MapView extends Component<Props> {
     const g = this.gesture;
     const { app, state, map } = this.props;
     if (!g) {
-      // Live preview of the cell being calibrated.
+      // Live preview of the cell being marked.
       if (state.calibration?.first) app.setCalibration({ ...state.calibration, hover: this.toMap(e) });
       return;
     }
@@ -159,21 +160,34 @@ export class MapView extends Component<Props> {
     if (g?.kind === "pan" && !g.moved && state.tool === "calibrate") this.calibrationClick(this.toMap(e));
   };
 
+  /** One click of the grid setup: 2 corners of a first cell, then 2 corners of a second one. */
   private calibrationClick(point: Point): void {
     const { app, state, map } = this.props;
-    const first = state.calibration?.mapId === map.id ? state.calibration.first : null;
-    if (!first) {
-      app.setCalibration({ mapId: map.id, first: point, hover: point });
+    const current = state.calibration?.mapId === map.id ? state.calibration : { mapId: map.id, cells: [], first: null, hover: null };
+    if (!current.first) {
+      app.setCalibration({ ...current, first: point, hover: point });
       return;
     }
-    const geometry = gridFromCorners(first, point);
-    if (!geometry) {
-      app.notify("Those two clicks are too close: click two opposite corners of one cell.");
-      app.setCalibration({ mapId: map.id, first: null, hover: null });
+    const cell: MarkedCell = [current.first, point];
+    const cells = [...current.cells, cell];
+    const tooSmall = gridFromCells(cell, cell) === null;
+    if (tooSmall) {
+      app.notify("Those two clicks are too close: click two opposite corners of the same cell.");
+      app.setCalibration({ ...current, first: null, hover: null });
       return;
     }
+    if (cells.length < 2) {
+      app.setCalibration({ mapId: map.id, cells, first: null, hover: null });
+      return;
+    }
+    const fit = gridFromCells(cells[0]!, cells[1]!)!;
+    const { span, ...geometry } = fit;
     app.send({ type: "map.setGrid", mapId: map.id, grid: geometry });
     app.setTool("select");
+    app.notify(
+      `Grid set: cells of ${fmt(fit.cellWidth)} × ${fmt(fit.cellHeight)} px, measured over ${span.cols + 1} × ${span.rows + 1} cells.` +
+        (span.cols < 3 || span.rows < 3 ? " For more precision, mark two cells farther apart (opposite corners of the map)." : ""),
+    );
   }
 
   private capture(e: PointerEvent): void {
@@ -199,6 +213,7 @@ export class MapView extends Component<Props> {
     const tokens = (state.table?.tokens ?? []).filter((t) => t.mapId === map.id);
     const selectedId = state.selection?.kind === "token" ? state.selection.id : null;
     const ruler = state.ruler?.mapId === map.id ? state.ruler : null;
+    const remoteRulers = Object.entries(state.remoteRulers).filter(([, r]) => r.mapId === map.id);
     const calibration = state.calibration?.mapId === map.id ? state.calibration : null;
     return (
       <svg
@@ -227,7 +242,10 @@ export class MapView extends Component<Props> {
               />
             ))}
           </g>
-          {calibration?.first && <CalibrationPreview first={calibration.first} hover={calibration.hover} zoom={view.zoom} />}
+          {calibration && <CalibrationPreview calibration={calibration} zoom={view.zoom} />}
+          {remoteRulers.map(([userId, r]) => (
+            <Ruler key={userId} from={r.from} to={r.to} map={map} zoom={view.zoom} color={r.color} owner={r.name} />
+          ))}
           {ruler && <Ruler from={ruler.from} to={ruler.to} map={map} zoom={view.zoom} />}
           {state.pings
             .filter((p) => p.mapId === map.id)
@@ -338,38 +356,57 @@ function fmt(n: number): string {
   return String(Math.round(n * 10) / 10);
 }
 
-export function Ruler({ from, to, map, zoom }: { from: Point; to: Point; map: TableMap; zoom: number }) {
+interface RulerProps {
+  from: Point;
+  to: Point;
+  map: TableMap;
+  zoom: number;
+  /** Colour and name of another user's ruler; omitted for your own. */
+  color?: string;
+  owner?: string;
+}
+
+export function Ruler({ from, to, map, zoom, color, owner }: RulerProps) {
   const { cells, feet } = rulerDistance(from, to, map.grid);
   const s = 1 / zoom; // keep marks and text the same size on screen at any zoom
   return (
-    <g class="ruler" data-testid="ruler" pointer-events="none">
-      <line class="ruler-line" x1={from.x} y1={from.y} x2={to.x} y2={to.y} vector-effect="non-scaling-stroke" />
-      <circle class="ruler-end" cx={from.x} cy={from.y} r={4 * s} />
-      <circle class="ruler-end" cx={to.x} cy={to.y} r={4 * s} />
+    <g class={`ruler ${owner ? "ruler-remote" : "ruler-own"}`} data-testid={owner ? "remote-ruler" : "ruler"} pointer-events="none">
+      <line class="ruler-line" x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={color} vector-effect="non-scaling-stroke" />
+      <circle class="ruler-end" cx={from.x} cy={from.y} r={4 * s} fill={color} />
+      <circle class="ruler-end" cx={to.x} cy={to.y} r={4 * s} fill={color} />
       <text class="ruler-label" x={to.x + 10 * s} y={to.y - 10 * s} font-size={15 * s}>
         {`${fmt(feet)} ft`}
         <tspan class="ruler-cells" font-size={12 * s}>{` (${fmt(cells)} cells)`}</tspan>
+        {owner && <tspan class="ruler-owner" x={to.x + 10 * s} dy={15 * s} font-size={11 * s}>{owner}</tspan>}
       </text>
     </g>
   );
 }
 
-function CalibrationPreview({ first, hover, zoom }: { first: Point; hover: Point | null; zoom: number }) {
+/** The cells marked so far during grid setup, and the one being marked. */
+function CalibrationPreview({ calibration, zoom }: { calibration: Calibration; zoom: number }) {
   const s = 1 / zoom;
-  const to = hover ?? first;
-  const x = Math.min(first.x, to.x);
-  const y = Math.min(first.y, to.y);
-  const w = Math.abs(to.x - first.x);
-  const h = Math.abs(to.y - first.y);
+  const cells: MarkedCell[] = [...calibration.cells];
+  if (calibration.first) cells.push([calibration.first, calibration.hover ?? calibration.first]);
   return (
     <g class="calibration" data-testid="calibration" pointer-events="none">
-      <rect class="calibration-cell" x={x} y={y} width={w} height={h} vector-effect="non-scaling-stroke" />
-      <path class="calibration-mark" d={`M${first.x - 8 * s} ${first.y}h${16 * s}M${first.x} ${first.y - 8 * s}v${16 * s}`} vector-effect="non-scaling-stroke" />
-      {w > 0 && h > 0 && (
-        <text class="ruler-label" x={x + w + 6 * s} y={y + h + 14 * s} font-size={13 * s}>
-          {`${fmt(w)} × ${fmt(h)} px`}
-        </text>
-      )}
+      {cells.map(([a, b], i) => {
+        const x = Math.min(a.x, b.x);
+        const y = Math.min(a.y, b.y);
+        const w = Math.abs(b.x - a.x);
+        const h = Math.abs(b.y - a.y);
+        return (
+          <g key={i} class="calibration-marked">
+            <rect class="calibration-cell" x={x} y={y} width={w} height={h} vector-effect="non-scaling-stroke" />
+            <path class="calibration-mark" d={`M${a.x - 8 * s} ${a.y}h${16 * s}M${a.x} ${a.y - 8 * s}v${16 * s}`} vector-effect="non-scaling-stroke" />
+            {w > 0 && h > 0 && (
+              <text class="ruler-label" x={x + w + 6 * s} y={y + h + 14 * s} font-size={13 * s}>
+                {`${i + 1}: ${fmt(w)} × ${fmt(h)} px`}
+              </text>
+            )}
+          </g>
+        );
+      })}
     </g>
   );
 }

@@ -37,7 +37,7 @@ export interface Mounted {
   unmount(): void;
 }
 
-export function mount(partial: Partial<ClientState> = {}, options: { pingDurationMs?: number } = {}): Mounted {
+export function mount(partial: Partial<ClientState> = {}, options: { pingDurationMs?: number; rulerIntervalMs?: number } = {}): Mounted {
   const root = document.createElement("div");
   document.body.appendChild(root);
   const store = new Store({

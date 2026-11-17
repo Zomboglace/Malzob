@@ -1,6 +1,6 @@
 # WebSocket protocol
 
-Version: **3** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
+Version: **4** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
 source of truth for the types below).
 
 - Endpoint: `ws://<host>:<port>/ws` (`wss://` behind HTTPS).
@@ -28,6 +28,8 @@ Changes in version 3: `cellSize` is replaced by `cellWidth` and `cellHeight`
 (cells may be non-square); new grid field `defaultTokenSize`; token and
 template `size` may be fractional or `null` (= the map's default); new
 `ping` message in both directions.
+
+Changes in version 4: new `ruler` message in both directions (shared ruler).
 
 ## Session flow
 
@@ -213,6 +215,16 @@ same client.
 { "type": "ping", "mapId": "8c1f…", "x": 512.5, "y": 300 }
 ```
 
+#### `ruler`
+Show your current measurement to the others (map pixels), or `null` when you
+stop measuring. Clients send it while dragging, at most every 50 ms, always
+including the final position. Not stored on disk; the server keeps each
+client's current ruler in memory to show it to clients who join later.
+```json
+{ "type": "ruler", "ruler": { "mapId": "8c1f…", "from": { "x": 140, "y": 210 }, "to": { "x": 490.5, "y": 420 } } }
+{ "type": "ruler", "ruler": null }
+```
+
 ---
 
 ## Server → client
@@ -292,6 +304,15 @@ Relayed to every joined client (the sender included), with who pinged.
 Clients show an expanding, fading circle for a moment.
 ```json
 { "type": "ping", "mapId": "8c1f…", "x": 512.5, "y": 300, "user": { "id": "5d0c…", "name": "Jane Doe" } }
+```
+
+#### `ruler`
+Sent to every joined client **except** the one measuring, with who it is
+(`ruler: null` = that ruler is gone, also sent when its owner disconnects).
+Right after `welcome`, a client receives one `ruler` message per ruler
+currently shown.
+```json
+{ "type": "ruler", "user": { "id": "5d0c…", "name": "Jane Doe" }, "ruler": { "mapId": "8c1f…", "from": { "x": 140, "y": 210 }, "to": { "x": 490.5, "y": 420 } } }
 ```
 
 #### `error`

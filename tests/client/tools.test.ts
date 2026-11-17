@@ -16,7 +16,7 @@ after(async () => {
 });
 afterEach(() => ui?.unmount());
 
-function mountWith(grid: Partial<GridSettings> = {}, tokenSize: number | null = 1, options = {}): Mounted {
+function mountWith(grid: Partial<GridSettings> = {}, tokenSize: number | null = 1, options: { pingDurationMs?: number; rulerIntervalMs?: number } = {}): Mounted {
   const table = sampleTable();
   Object.assign(table.maps[0]!.grid, grid);
   table.tokens[0]!.size = tokenSize;
@@ -89,7 +89,7 @@ describe("UI: ruler", () => {
     pointer(svg(), "pointerup", { clientX: 137, clientY: 200 });
     const label = ui.$("[data-testid=ruler] .ruler-label").textContent;
     assert.equal(label, "5 ft (1 cells)");
-    assert.deepEqual(ui.sent, []);
+    assert.ok(!ui.sent.some((m) => m.type !== "ruler"), "only ruler updates are sent: no token move");
     escape();
     assert.equal(ui.root.querySelector("[data-testid=ruler]"), null);
     assert.equal(ui.store.get().tool, "select");
@@ -147,53 +147,131 @@ describe("UI: ping", () => {
   });
 });
 
-describe("UI: grid from two clicks", () => {
-  test("two clicks on opposite corners of one cell set size and offset", () => {
+describe("UI: shared ruler", () => {
+  test("your ruler is sent to the others (throttled, last position always sent) and removed on Esc", async () => {
+    ui = mountWith({}, 1, { rulerIntervalMs: 40 });
+    tool("ruler");
+    pointer(svg(), "pointerdown", { clientX: 0, clientY: 0 });
+    pointer(svg(), "pointermove", { clientX: 50, clientY: 0 });
+    pointer(svg(), "pointermove", { clientX: 100, clientY: 0 });
+    pointer(svg(), "pointerup", { clientX: 100, clientY: 0 });
+    // The first update goes out at once; the rest is grouped.
+    assert.deepEqual(ui.sent, [{ type: "ruler", ruler: { mapId: "map1", from: { x: 0, y: 0 }, to: { x: 0, y: 0 } } }]);
+    await new Promise((r) => setTimeout(r, 60));
+    assert.deepEqual(ui.sent.at(-1), { type: "ruler", ruler: { mapId: "map1", from: { x: 0, y: 0 }, to: { x: 100, y: 0 } } });
+    assert.equal(ui.sent.length, 2);
+    await new Promise((r) => setTimeout(r, 50));
+    escape();
+    assert.deepEqual(ui.sent.at(-1), { type: "ruler", ruler: null });
+  });
+
+  test("other users' rulers are drawn in their colour with their name, and go away", () => {
     ui = mountWith();
-    ui.$(".calibrate-start").click();
+    const user = { id: "u2", name: "John Doe" };
+    ui.app.handleServerMessage({ type: "ruler", user, ruler: { mapId: "map1", from: { x: 0, y: 0 }, to: { x: 0, y: 150 } } });
+    const remote = ui.$("[data-testid=remote-ruler]");
+    assert.match(remote.querySelector(".ruler-label")!.textContent ?? "", /^15 ft \(3 cells\)John Doe$/);
+    assert.ok(remote.querySelector(".ruler-line")!.getAttribute("stroke")?.startsWith("hsl("));
+    ui.app.handleServerMessage({ type: "ruler", user, ruler: null });
+    assert.equal(ui.root.querySelector("[data-testid=remote-ruler]"), null);
+
+    // A user who leaves takes their ruler with them.
+    ui.app.handleServerMessage({ type: "ruler", user, ruler: { mapId: "map1", from: { x: 0, y: 0 }, to: { x: 10, y: 0 } } });
+    ui.app.handleServerMessage({ type: "users", users: [{ id: "u1", name: "Jane Doe" }] });
+    assert.equal(ui.root.querySelector("[data-testid=remote-ruler]"), null);
+  });
+
+  test("rulers on another map are not shown", () => {
+    ui = mountWith();
+    ui.app.handleServerMessage({ type: "ruler", user: { id: "u2", name: "John Doe" }, ruler: { mapId: "other", from: { x: 0, y: 0 }, to: { x: 1, y: 1 } } });
+    assert.equal(ui.root.querySelector("[data-testid=remote-ruler]"), null);
+  });
+});
+
+describe("UI: grid setup from two cells", () => {
+  const startSetup = () => ui.$(".calibrate-start").click();
+
+  test("is started from the sidebar only, not from the map toolbar", () => {
+    ui = mountWith();
+    assert.equal(ui.root.querySelector("[data-testid=toolbar] .tool-calibrate"), null);
+    startSetup();
     assert.equal(ui.store.get().tool, "calibrate");
-    click(10, 20);
-    assert.match(ui.$("[data-testid=tool-hint]").textContent ?? "", /opposite corner/);
-    pointer(svg(), "pointermove", { clientX: 50, clientY: 60 });
-    assert.ok(ui.root.querySelector("[data-testid=calibration] .calibration-cell"));
-    click(90, 60);
-    assert.deepEqual(ui.sent, [{ type: "map.setGrid", mapId: "map1", grid: { cellWidth: 80, cellHeight: 40, offsetX: 10, offsetY: 20 } }]);
+    assert.equal(ui.$(".calibrate-start").textContent, "Cancel grid setup");
+    startSetup();
     assert.equal(ui.store.get().tool, "select");
   });
 
-  test("works zoomed in with sub-pixel precision; panning between clicks is allowed", () => {
+  test("four clicks (two corners of two far-apart cells) set size and offset", () => {
     ui = mountWith();
-    ui.app.setView("map1", { x: -400, y: -400, zoom: 4 });
-    tool("calibrate");
-    click(0, 0); // map (100, 100)
-    // Pan by dragging: not a click.
-    pointer(svg(), "pointerdown", { clientX: 300, clientY: 300 });
-    pointer(svg(), "pointermove", { clientX: 200, clientY: 200 });
-    pointer(svg(), "pointerup", { clientX: 200, clientY: 200 });
-    assert.deepEqual(ui.sent, []);
-    // The view moved by (-100, -100); map (150.5, 150) is now at screen (102, 100).
-    click(102, 100);
-    assert.deepEqual(ui.sent, [{ type: "map.setGrid", mapId: "map1", grid: { cellWidth: 50.5, cellHeight: 50, offsetX: 49.5, offsetY: 0 } }]);
+    startSetup();
+    assert.match(ui.$("[data-testid=tool-hint]").textContent ?? "", /cell 1 of 2: click one corner/);
+    click(60, 85);
+    assert.match(ui.$("[data-testid=tool-hint]").textContent ?? "", /cell 1 of 2: click the opposite corner/);
+    pointer(svg(), "pointermove", { clientX: 100, clientY: 115 });
+    assert.equal(ui.$$("[data-testid=calibration] .calibration-cell").length, 1);
+    click(110, 125);
+    assert.match(ui.$("[data-testid=tool-hint]").textContent ?? "", /cell 2 of 2/);
+    assert.deepEqual(ui.sent, [], "nothing is sent before the second cell");
+    click(860, 445);
+    click(910, 485);
+    assert.deepEqual(ui.sent, [{ type: "map.setGrid", mapId: "map1", grid: { cellWidth: 50, cellHeight: 40, offsetX: 10, offsetY: 5 } }]);
+    assert.equal(ui.store.get().tool, "select");
+    assert.match(ui.$("[data-testid=notice]").textContent ?? "", /50 × 40 px, measured over 17 × 10 cells/);
   });
 
-  test("clicks too close together are refused with a notice", () => {
+  test("works zoomed in; panning between clicks is allowed", () => {
     ui = mountWith();
-    tool("calibrate");
+    ui.app.setView("map1", { x: -400, y: -400, zoom: 4 });
+    startSetup();
+    click(0, 0); // map (100, 100)
+    click(202, 200); // map (150.5, 150)
+    // Pan by dragging: not a click.
+    pointer(svg(), "pointerdown", { clientX: 300, clientY: 300 });
+    pointer(svg(), "pointermove", { clientX: -3700, clientY: -3700 });
+    pointer(svg(), "pointerup", { clientX: -3700, clientY: -3700 });
+    assert.deepEqual(ui.sent, []);
+    // View is now (-4400, -4400) at zoom 4. Second cell, 20 cells away: map (1110, 1100) to (1160.5, 1150).
+    click(40, 0);
+    click(242, 200);
+    const grid = (ui.sent[0] as unknown as { grid: Record<string, number> }).grid;
+    assert.equal(grid.cellWidth, 50.5);
+    assert.equal(grid.cellHeight, 50);
+    assert.equal(grid.offsetX, 49.5);
+    assert.equal(grid.offsetY, 0);
+  });
+
+  test("a cell marked with clicks too close together is refused; you can redo it", () => {
+    ui = mountWith();
+    startSetup();
     click(10, 10);
     click(12, 40);
     assert.deepEqual(ui.sent, []);
     assert.match(ui.$("[data-testid=notice]").textContent ?? "", /too close/);
-    assert.equal(ui.store.get().tool, "calibrate", "you can try again");
+    assert.equal(ui.store.get().tool, "calibrate");
+    assert.equal(ui.store.get().calibration?.cells.length, 0);
+  });
+
+  test("cells close together still work, with a tip to mark cells farther apart", () => {
+    ui = mountWith();
+    startSetup();
+    click(0, 0);
+    click(50, 50);
+    click(50, 50);
+    click(100, 100);
+    assert.equal(ui.sent.length, 1);
+    assert.match(ui.$("[data-testid=notice]").textContent ?? "", /farther apart/);
   });
 });
 
 describe("UI: sidebar", () => {
-  test("can be hidden and shown again", () => {
+  test("is completely hidden and shown again by a button outside it", () => {
     ui = mountWith();
-    ui.$(".sidebar-toggle").click();
-    assert.ok(ui.$("[data-testid=sidebar]").classList.contains("is-collapsed"));
-    assert.equal(ui.root.querySelector("[data-testid=maps-panel]"), null);
-    ui.$(".sidebar-toggle").click();
-    assert.ok(ui.root.querySelector("[data-testid=maps-panel]"));
+    const toggle = ui.$("[data-testid=sidebar-toggle]");
+    assert.equal(toggle.closest("[data-testid=sidebar]"), null, "the button is not inside the sidebar");
+    toggle.click();
+    assert.equal(ui.root.querySelector("[data-testid=sidebar]"), null);
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    ui.$("[data-testid=sidebar-toggle]").click();
+    assert.ok(ui.root.querySelector("[data-testid=sidebar] [data-testid=maps-panel]"));
   });
 });

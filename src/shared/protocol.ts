@@ -6,14 +6,23 @@
  * them to the authoritative state and broadcasts the result (ServerMessage).
  */
 import type { StatsPatch } from "./stats.ts";
+import type { Point } from "./grid.ts";
 import type { GridSettings, TableState, User } from "./types.ts";
+
+/** A measurement on a map, in map pixels. */
+export interface RulerLine {
+  mapId: string;
+  from: Point;
+  to: Point;
+}
 
 /**
  * 2: fractional grid values and token positions, feetPerCell, subdivisions.
  * 3: cellWidth/cellHeight (replace cellSize), defaultTokenSize, nullable and
  *    fractional token sizes, ping.
+ * 4: shared ruler.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const WS_PATH = "/ws";
 
 /** Appearance fields shared by token and template updates. */
@@ -55,7 +64,9 @@ export type ClientMessage =
   | { type: "template.update"; templateId: string; changes: AppearancePatch }
   | { type: "template.delete"; templateId: string }
   // Ephemeral (not stored): point at a spot of a map, in map pixels.
-  | { type: "ping"; mapId: string; x: number; y: number };
+  | { type: "ping"; mapId: string; x: number; y: number }
+  // Ephemeral: show your current measurement to the others, or null to remove it.
+  | { type: "ruler"; ruler: RulerLine | null };
 
 export type ClientMessageType = ClientMessage["type"];
 
@@ -70,5 +81,10 @@ export type ServerMessage =
   | { type: "users"; users: User[] }
   /** Sent to everyone (sender included) when someone pings a spot of a map. */
   | { type: "ping"; mapId: string; x: number; y: number; user: User }
+  /**
+   * Sent to the other clients when someone measures (null = their ruler is
+   * gone). Also sent to a client right after `welcome` for each ruler shown.
+   */
+  | { type: "ruler"; user: User; ruler: RulerLine | null }
   /** Sent only to the client whose message was rejected. */
   | { type: "error"; code: ErrorCode; message: string; ref?: string };

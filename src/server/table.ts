@@ -5,7 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
-import type { ClientMessage, ErrorCode, ServerMessage } from "../shared/protocol.ts";
+import type { ClientMessage, ErrorCode, RulerLine, ServerMessage } from "../shared/protocol.ts";
 import { PROTOCOL_VERSION } from "../shared/protocol.ts";
 import { applyIntent, type ReducerContext } from "../shared/reducer.ts";
 import type { TableState, User } from "../shared/types.ts";
@@ -21,6 +21,8 @@ interface Client {
   /** null until the client has sent `hello`. */
   user: User | null;
   lastPingAt: number;
+  /** The client's current measurement, relayed to the others (not persisted). */
+  ruler: RulerLine | null;
 }
 
 export class Table {
@@ -41,7 +43,7 @@ export class Table {
   }
 
   connect(socket: WebSocket): void {
-    this.clients.set(socket, { socket, user: null, lastPingAt: 0 });
+    this.clients.set(socket, { socket, user: null, lastPingAt: 0, ruler: null });
     socket.on("message", (data, isBinary) => {
       if (isBinary) return this.sendError(socket, "invalid", "binary messages are not supported");
       this.receive(socket, data.toString());
@@ -49,7 +51,10 @@ export class Table {
     socket.on("close", () => {
       const client = this.clients.get(socket);
       this.clients.delete(socket);
-      if (client?.user) this.broadcastUsers();
+      if (client?.user) {
+        if (client.ruler) this.broadcast({ type: "ruler", user: client.user, ruler: null });
+        this.broadcastUsers();
+      }
     });
     // `ws` has already started a clean close (e.g. code 1009 for an oversized
     // frame) when it emits "error". Do not terminate() here: destroying the
@@ -86,6 +91,12 @@ export class Table {
         state: this.state,
         users: this.users(),
       });
+      // Show the measurements currently on screen to the newcomer.
+      for (const other of this.clients.values()) {
+        if (other !== client && other.user && other.ruler) {
+          this.send(client.socket, { type: "ruler", user: other.user, ruler: other.ruler });
+        }
+      }
       this.broadcastUsers();
       return;
     }
@@ -104,6 +115,15 @@ export class Table {
       if (now - client.lastPingAt < PING_INTERVAL_MS) return;
       client.lastPingAt = now;
       this.broadcast({ type: "ping", mapId: msg.mapId, x: msg.x, y: msg.y, user: client.user });
+      return;
+    }
+    if (msg.type === "ruler") {
+      // Ephemeral: relayed to the other clients, kept in memory for newcomers only.
+      if (msg.ruler && !this.state.maps.some((m) => m.id === msg.ruler!.mapId)) {
+        return this.sendError(client.socket, "not_found", `map ${msg.ruler.mapId} not found`, msg.type);
+      }
+      client.ruler = msg.ruler;
+      this.broadcast({ type: "ruler", user: client.user, ruler: msg.ruler }, client.socket);
       return;
     }
 
@@ -131,11 +151,11 @@ export class Table {
     this.send(socket, ref ? { type: "error", code, message, ref } : { type: "error", code, message });
   }
 
-  /** Sends to every client that has said hello. */
-  private broadcast(msg: ServerMessage): void {
+  /** Sends to every client that has said hello, except `exclude` if given. */
+  private broadcast(msg: ServerMessage, exclude?: WebSocket): void {
     const data = JSON.stringify(msg);
     for (const c of this.clients.values()) {
-      if (c.user && c.socket.readyState === c.socket.OPEN) c.socket.send(data);
+      if (c.user && c.socket !== exclude && c.socket.readyState === c.socket.OPEN) c.socket.send(data);
     }
   }
 

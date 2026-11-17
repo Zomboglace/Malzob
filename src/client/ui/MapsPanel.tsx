@@ -59,7 +59,7 @@ export function MapsPanel({ app, state }: Props) {
         <input name="mapName" placeholder="New map name" maxLength={LIMITS.nameLength} />
         <button type="submit">Add map</button>
       </form>
-      {active && <ActiveMapSettings app={app} map={active} />}
+      {active && <ActiveMapSettings app={app} map={active} calibrating={state.tool === "calibrate"} />}
     </section>
   );
 }
@@ -71,7 +71,7 @@ function formatFeet(feet: number): string {
   return `${Number(feet.toFixed(2))} ft`;
 }
 
-function ActiveMapSettings({ app, map }: { app: Controller; map: TableMap }) {
+function ActiveMapSettings({ app, map, calibrating }: { app: Controller; map: TableMap; calibrating: boolean }) {
   const grid = (patch: Record<string, number | string | boolean>) => app.send({ type: "map.setGrid", mapId: map.id, grid: patch });
   const { cellSize, offset, gridCells, feetPerCell, subdivisions } = LIMITS;
   const square = map.grid.cellWidth === map.grid.cellHeight;
@@ -101,8 +101,13 @@ function ActiveMapSettings({ app, map }: { app: Controller; map: TableMap }) {
           <input type="checkbox" name="gridVisible" checked={map.grid.visible} onChange={(e) => grid({ visible: (e.currentTarget as HTMLInputElement).checked })} />
           <span>Show grid</span>
         </label>
-        <button type="button" class="calibrate-start" onClick={() => app.setTool("calibrate")}>
-          Set grid from one cell (2 clicks)
+        <button
+          type="button"
+          class={`calibrate-start ${calibrating ? "is-on" : ""}`}
+          title="Mark two cells far apart on the map, by clicking two opposite corners of each"
+          onClick={() => app.setTool(calibrating ? "select" : "calibrate")}
+        >
+          {calibrating ? "Cancel grid setup" : "Set grid from 2 cells"}
         </button>
         <div class="row">
           <NumberField

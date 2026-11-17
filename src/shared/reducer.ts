@@ -11,7 +11,10 @@ import { applyStatsPatch, cloneStats, defaultStats } from "./stats.ts";
 import type { ImageRef, TableMap, TableState, Token, TokenTemplate } from "./types.ts";
 
 /** Messages that change the state (session and ephemeral messages are handled by the server). */
-export type StateIntent = Exclude<ClientMessage, { type: "hello" } | { type: "user.rename" } | { type: "ping" }>;
+export type StateIntent = Exclude<
+  ClientMessage,
+  { type: "hello" } | { type: "user.rename" } | { type: "ping" } | { type: "ruler" }
+>;
 
 export interface ReducerContext {
   newId(): string;

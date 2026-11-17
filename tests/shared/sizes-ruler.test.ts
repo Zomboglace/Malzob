@@ -4,7 +4,7 @@ import {
   clampToGrid,
   defaultGrid,
   footprint,
-  gridFromCorners,
+  gridFromCells,
   pixelToCell,
   cellToPixel,
   rulerDistance,
@@ -70,21 +70,47 @@ describe("ruler", () => {
   });
 });
 
-describe("grid from two clicked corners", () => {
-  test("derives cell size and offset, whatever the click order", () => {
-    const expected = { cellWidth: 50.5, cellHeight: 49.25, offsetX: 23.5, offsetY: 11 };
-    assert.deepEqual(gridFromCorners({ x: 124.5, y: 60.25 }, { x: 175, y: 109.5 }), expected);
-    assert.deepEqual(gridFromCorners({ x: 175, y: 109.5 }, { x: 124.5, y: 60.25 }), expected);
-    assert.deepEqual(gridFromCorners({ x: 175, y: 60.25 }, { x: 124.5, y: 109.5 }), expected);
+describe("grid from two marked cells", () => {
+  // Helper: a cell marked by two opposite corners.
+  const cell = (x: number, y: number, w: number, h: number) => [{ x, y }, { x: x + w, y: y + h }] as [{ x: number; y: number }, { x: number; y: number }];
+
+  test("exact clicks give the exact grid, in any click order", () => {
+    // Grid: 50 x 40 px cells, offset (10, 5). Cell (1,2) and cell (17,11).
+    const expected = { cellWidth: 50, cellHeight: 40, offsetX: 10, offsetY: 5, span: { cols: 16, rows: 9 } };
+    assert.deepEqual(gridFromCells(cell(60, 85, 50, 40), cell(860, 445, 50, 40)), expected);
+    const reversed: [{ x: number; y: number }, { x: number; y: number }] = [{ x: 910, y: 485 }, { x: 860, y: 445 }];
+    assert.deepEqual(gridFromCells(reversed, cell(60, 85, 50, 40)), expected);
   });
 
-  test("supports non-square cells and rejects clicks that are too close", () => {
-    assert.deepEqual(gridFromCorners({ x: 10, y: 20 }, { x: 90, y: 60 }), { cellWidth: 80, cellHeight: 40, offsetX: 10, offsetY: 20 });
-    assert.equal(gridFromCorners({ x: 10, y: 20 }, { x: 12, y: 60 }), null);
+  test("averages out click errors: far-apart cells give a precise size", () => {
+    // True grid: 70.4 px cells, offset 0. Clicks are off by up to 2 px.
+    const a: [{ x: number; y: number }, { x: number; y: number }] = [{ x: 71.4, y: 69.4 }, { x: 139.8, y: 142.8 }]; // cell (1,1)
+    const b: [{ x: number; y: number }, { x: number; y: number }] = [{ x: 1268.2, y: 916.2 }, { x: 1339.2, y: 984.6 }]; // cell (18,13)
+    const fit = gridFromCells(a, b)!;
+    assert.deepEqual(fit.span, { cols: 17, rows: 12 });
+    // One cell alone would say ~68.4 x 73.4; the fit is within 0.1 px.
+    assert.ok(Math.abs(fit.cellWidth - 70.4) < 0.1, `width ${fit.cellWidth}`);
+    assert.ok(Math.abs(fit.cellHeight - 70.4) < 0.1, `height ${fit.cellHeight}`);
+    const offsetError = (o: number, size: number) => Math.min(o, size - o);
+    assert.ok(offsetError(fit.offsetX, fit.cellWidth) < 1.5, `offsetX ${fit.offsetX}`);
+    assert.ok(offsetError(fit.offsetY, fit.cellHeight) < 1.5, `offsetY ${fit.offsetY}`);
   });
 
-  test("a corner on a whole number of cells gives a zero offset", () => {
-    assert.deepEqual(gridFromCorners({ x: 140, y: 70 }, { x: 210, y: 140 }), { cellWidth: 70, cellHeight: 70, offsetX: 0, offsetY: 0 });
+  test("radically different cells still give a reasonable grid", () => {
+    const fit = gridFromCells(cell(0, 0, 50, 50), cell(300, 300, 100, 100))!;
+    assert.ok(fit.cellWidth > 50 && fit.cellWidth < 100, `width ${fit.cellWidth}`);
+    assert.equal(fit.cellWidth, fit.cellHeight);
+  });
+
+  test("two cells in the same column or row: that axis uses the average size", () => {
+    const fit = gridFromCells(cell(100, 0, 50, 40), cell(100, 400, 52, 40))!;
+    assert.equal(fit.cellWidth, 51);
+    assert.equal(fit.span.cols, 0);
+    assert.equal(fit.cellHeight, 40);
+  });
+
+  test("a cell marked with clicks too close together is rejected", () => {
+    assert.equal(gridFromCells(cell(10, 20, 2, 40), cell(500, 500, 50, 40)), null);
   });
 });
 
@@ -144,6 +170,11 @@ describe("validation and migration", () => {
     assert.ok(validateClientMessage({ type: "template.update", templateId: "t", changes: { size: 0.25 } }).ok);
     assert.ok(validateClientMessage({ type: "map.setGrid", mapId: "m", grid: { defaultTokenSize: 0.5, cellWidth: 60, cellHeight: 40 } }).ok);
     assert.equal(validateClientMessage({ type: "map.setGrid", mapId: "m", grid: { defaultTokenSize: 0 } }).ok, false);
+    assert.ok(validateClientMessage({ type: "ruler", ruler: { mapId: "m", from: { x: 0, y: 0 }, to: { x: 1.5, y: 2 } } }).ok);
+    assert.ok(validateClientMessage({ type: "ruler", ruler: null }).ok);
+    assert.equal(validateClientMessage({ type: "ruler" }).ok, false);
+    assert.equal(validateClientMessage({ type: "ruler", ruler: { mapId: "m", from: { x: 0 }, to: { x: 1, y: 2 } } }).ok, false);
+    assert.equal(validateClientMessage({ type: "ruler", ruler: { mapId: "m", from: { x: 0, y: 0, z: 1 }, to: { x: 1, y: 2 } } }).ok, false);
   });
 
   test("old square-cell grids are migrated to width/height", () => {

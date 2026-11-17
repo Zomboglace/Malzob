@@ -12,8 +12,8 @@ very few dependencies, and tests for every feature.
 - **Maps**: several maps, one active map shown to everyone; a background image
   per map (PNG, JPEG or WebP, up to 15 MiB, stored on the server by content hash).
 - **Grid**: cell width/height (non-square allowed) and X/Y offset with
-  sub-pixel precision to align with the image, or **set it with two clicks** on
-  opposite corners of one cell; columns/rows (derived from the image by
+  sub-pixel precision to align with the image, or **set it by marking two
+  cells** far apart (four clicks; the grid is fitted to both); columns/rows (derived from the image by
   default), line colour and opacity, show/hide, distance per cell (5 ft by
   default, editable). Cells can be split (2 × 2, 3 × 3, …) so tokens move by
   sub-cells.
@@ -21,7 +21,8 @@ very few dependencies, and tests for every feature.
   its sub-cells and kept inside it), delete, duplicate, name, colour or image,
   HP bar. Size in cells, fractional sizes included (½ cell for Tiny…), either
   per token or from a default size set on each map.
-- **Ruler** to measure any distance, anywhere, in feet and cells.
+- **Ruler** to measure any distance, anywhere, in feet and cells; everyone
+  sees it live.
 - **Ping**: show everyone a spot with an expanding, fading circle.
 - **Templates** ("monster/character models"): a library of templates with a
   stat sheet. Placing a template creates a token with its own copy of the stats.
@@ -33,7 +34,7 @@ very few dependencies, and tests for every feature.
 - **Multi-user**: everyone picks a display name; connected users are listed;
   clients reconnect and resync automatically; state survives a server restart.
 - **Local view**: pan (drag empty space or middle-button drag) and zoom (mouse
-  wheel), per client. The sidebar can be hidden.
+  wheel), per client. The sidebar can be hidden (☰ button, top left).
 
 Not there yet (see [docs/architecture.md](docs/architecture.md) for how they
 would fit): GM/player roles, fog of war, walls and line of sight, lighting,
@@ -75,13 +76,16 @@ To play with friends on your network, share `http://<your-ip>:3000`. There is
 no authentication: anyone who can reach the server can edit the table.
 
 Quick tour: create a map in the left sidebar and upload a background image.
-To align the grid, zoom in on the image, click **Set grid** and click two
-opposite corners of one cell (fine-tune with the number fields if needed).
+To align the grid, click **Set grid from 2 cells** in the grid settings, then
+click two opposite corners of a cell near one edge of the map and two
+opposite corners of a cell far from it (ideally in the opposite corner). Zoom
+in for precision; you can pan between clicks. Fine-tune with the number
+fields (their arrows and the up/down keys change values by 1) if needed.
 Add a template (e.g. "Goblin"), click **Place** then click on the map. Click a
 token to open its stat sheet; drag it to move it.
 
 Map tools (buttons over the map): **Select** (default), **Ruler** (drag to
-measure), **Ping** (click to show a spot to everyone), **Set grid** (two clicks).
+measure; shown to everyone), **Ping** (click to show a spot to everyone).
 
 Keyboard:
 
@@ -94,8 +98,8 @@ Keyboard:
 | Alt + click | ping, whatever the tool |
 | middle-button drag | pan, whatever the tool |
 
-Decimal fields (cell width/height, offsets, feet per cell) accept `70.5` or
-`70,5`. Editing the width of square cells keeps them square; edit the height
+Decimal fields (cell width/height, offsets, feet per cell) accept decimals
+such as `70.5` (or `70,5` where the browser's language uses a decimal comma). Editing the width of square cells keeps them square; edit the height
 afterwards for non-square cells.
 
 ## Test

@@ -4,10 +4,9 @@
  * messages into the client store. The UI never touches the socket directly,
  * which keeps components easy to test with a fake `send`.
  */
-import type { Point } from "../shared/grid.ts";
-import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
+import type { ClientMessage, RulerLine, ServerMessage } from "../shared/protocol.ts";
 import type { ImageRef, TableState } from "../shared/types.ts";
-import type { Placing, Selection, Store, Tool } from "./store.ts";
+import type { Calibration, Placing, Selection, Store, Tool } from "./store.ts";
 import type { Uploader } from "./upload.ts";
 import type { View } from "./view.ts";
 
@@ -24,8 +23,9 @@ export interface Controller {
   notify(message: string | null): void;
   /** Switches tool; clears the ruler, calibration and placing. */
   setTool(tool: Tool): void;
-  setRuler(ruler: { mapId: string; from: Point; to: Point } | null): void;
-  setCalibration(calibration: { mapId: string; first: Point | null; hover: Point | null } | null): void;
+  /** Updates your ruler; it is sent to the others (throttled). */
+  setRuler(ruler: RulerLine | null): void;
+  setCalibration(calibration: Calibration | null): void;
   toggleSidebar(): void;
   /** Uploads an image; returns null (and shows a notice) on failure. */
   upload(file: Blob): Promise<ImageRef | null>;
@@ -41,6 +41,8 @@ export interface ControllerDeps {
   onJoin?(name: string): void;
   /** How long a ping stays on screen (ms). */
   pingDurationMs?: number;
+  /** Minimum delay between two ruler updates sent to the server (ms). */
+  rulerIntervalMs?: number;
 }
 
 /** A stable, readable colour for a user, derived from their id. */
@@ -61,8 +63,32 @@ function pruneLocal(table: TableState, selection: Selection | null, placing: Pla
   };
 }
 
-export function createController({ store, send, uploader, onJoin, pingDurationMs = 1900 }: ControllerDeps): Controller {
+export function createController({
+  store,
+  send,
+  uploader,
+  onJoin,
+  pingDurationMs = 1900,
+  rulerIntervalMs = 50,
+}: ControllerDeps): Controller {
   let pingSeq = 0;
+
+  // Ruler updates are sent at most every `rulerIntervalMs`; the last one is
+  // always sent (trailing), so the others end up seeing the final position.
+  let rulerSentAt = 0;
+  let rulerTimer: ReturnType<typeof setTimeout> | null = null;
+  const sendRuler = () => {
+    rulerTimer = null;
+    rulerSentAt = Date.now();
+    send({ type: "ruler", ruler: store.get().ruler });
+  };
+  const scheduleRuler = () => {
+    if (rulerTimer) return;
+    const wait = rulerSentAt + rulerIntervalMs - Date.now();
+    if (wait <= 0) sendRuler();
+    else rulerTimer = setTimeout(sendRuler, wait);
+  };
+
   return {
     store,
     send(msg) {
@@ -88,10 +114,13 @@ export function createController({ store, send, uploader, onJoin, pingDurationMs
       store.update({ notice });
     },
     setTool(tool) {
+      const hadRuler = store.get().ruler !== null;
       store.update({ tool, ruler: null, calibration: null, placing: null });
+      if (hadRuler) scheduleRuler();
     },
     setRuler(ruler) {
       store.update({ ruler });
+      scheduleRuler();
     },
     setCalibration(calibration) {
       store.update({ calibration });
@@ -110,7 +139,14 @@ export function createController({ store, send, uploader, onJoin, pingDurationMs
     handleServerMessage(msg) {
       switch (msg.type) {
         case "welcome":
-          store.update((s) => ({ me: msg.you, table: msg.state, users: msg.users, ...pruneLocal(msg.state, s.selection, s.placing) }));
+          // remoteRulers is reset: the server sends the current ones right after welcome.
+          store.update((s) => ({
+            me: msg.you,
+            table: msg.state,
+            users: msg.users,
+            remoteRulers: {},
+            ...pruneLocal(msg.state, s.selection, s.placing),
+          }));
           return;
         case "state":
           store.update((s) => ({
@@ -120,7 +156,19 @@ export function createController({ store, send, uploader, onJoin, pingDurationMs
           }));
           return;
         case "users":
-          store.update({ users: msg.users });
+          store.update((s) => ({
+            users: msg.users,
+            // Drop the rulers of users who left.
+            remoteRulers: Object.fromEntries(Object.entries(s.remoteRulers).filter(([id]) => msg.users.some((u) => u.id === id))),
+          }));
+          return;
+        case "ruler":
+          store.update((s) => {
+            const remoteRulers = { ...s.remoteRulers };
+            if (msg.ruler) remoteRulers[msg.user.id] = { ...msg.ruler, name: msg.user.name, color: userColor(msg.user.id) };
+            else delete remoteRulers[msg.user.id];
+            return { remoteRulers };
+          });
           return;
         case "ping": {
           const ping = { id: ++pingSeq, mapId: msg.mapId, x: msg.x, y: msg.y, color: userColor(msg.user.id), name: msg.user.name };

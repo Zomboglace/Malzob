@@ -167,29 +167,71 @@ export function rulerDistance(a: Point, b: Point, grid: GridSettings): { cells: 
   return { cells, feet: cells * grid.feetPerCell };
 }
 
+/** One cell marked on the map by two of its opposite corners (in any order). */
+export type MarkedCell = [Point, Point];
+
+/** The result of a grid fit: the geometry, plus how many cells apart the two marked cells are. */
+export interface GridFit {
+  cellWidth: number;
+  cellHeight: number;
+  offsetX: number;
+  offsetY: number;
+  /** Cells between the two marked cells on each axis (0 = same column / row). */
+  span: { cols: number; rows: number };
+}
+
 /**
- * Grid geometry from two opposite corners of one cell, clicked on the map:
- * the cell size is the distance between the clicks on each axis, and the
- * offset puts a grid line on the clicked corners. Returns null if the cell
- * would be smaller than MIN_CELL_PX on either axis.
+ * Fits grid lines `x = origin + k * size` on one axis to the four edges of
+ * two marked cells. Cell A's edges are lines k = 0 and 1; cell B's are n and
+ * n + 1, where n is how many (estimated) cells separate them. A least-squares
+ * line through those four points averages out click errors: the farther apart
+ * the cells, the more precise the size. If the two cells have very different
+ * sizes, the fit still returns the best compromise.
  */
-export function gridFromCorners(
-  a: Point,
-  b: Point,
-): Pick<GridSettings, "cellWidth" | "cellHeight" | "offsetX" | "offsetY"> | null {
-  const cellWidth = Math.abs(b.x - a.x);
-  const cellHeight = Math.abs(b.y - a.y);
-  if (cellWidth < MIN_CELL_PX || cellHeight < MIN_CELL_PX) return null;
+function fitAxis(a0: number, a1: number, b0: number, b1: number): { size: number; offset: number; span: number } | null {
+  const [aStart, aEnd] = a0 <= a1 ? [a0, a1] : [a1, a0];
+  const [bStart, bEnd] = b0 <= b1 ? [b0, b1] : [b1, b0];
+  if (aEnd - aStart < MIN_CELL_PX || bEnd - bStart < MIN_CELL_PX) return null;
+  const estimate = (aEnd - aStart + bEnd - bStart) / 2;
+  const n = Math.round((bStart - aStart) / estimate);
+  const points: Array<[number, number]> = [
+    [0, aStart],
+    [1, aEnd],
+    [n, bStart],
+    [n + 1, bEnd],
+  ];
+  const kMean = points.reduce((sum, [k]) => sum + k, 0) / points.length;
+  const xMean = points.reduce((sum, [, x]) => sum + x, 0) / points.length;
+  let num = 0;
+  let den = 0;
+  for (const [k, x] of points) {
+    num += (k - kMean) * (x - xMean);
+    den += (k - kMean) ** 2;
+  }
+  const size = num / den;
+  if (!(size >= MIN_CELL_PX)) return null;
+  const origin = xMean - size * kMean;
+  let offset = ((origin % size) + size) % size;
+  if (size - offset < 1e-6) offset = 0;
+  return { size, offset, span: Math.abs(n) };
+}
+
+/**
+ * Grid geometry from two cells marked on the map (each by two opposite
+ * corners), ideally far apart. Width and height are fitted separately, so
+ * non-square cells work. Returns null if a marked cell is smaller than
+ * MIN_CELL_PX on either axis.
+ */
+export function gridFromCells(a: MarkedCell, b: MarkedCell): GridFit | null {
+  const x = fitAxis(a[0].x, a[1].x, b[0].x, b[1].x);
+  const y = fitAxis(a[0].y, a[1].y, b[0].y, b[1].y);
+  if (!x || !y) return null;
   const r = (v: number) => Number(v.toFixed(4));
-  // Offset in [0, cell): a corner at 0.99999 cells is treated as 0.
-  const mod = (v: number, m: number) => {
-    const o = ((v % m) + m) % m;
-    return m - o < 1e-6 ? 0 : o;
-  };
   return {
-    cellWidth: r(cellWidth),
-    cellHeight: r(cellHeight),
-    offsetX: r(mod(Math.min(a.x, b.x), cellWidth)),
-    offsetY: r(mod(Math.min(a.y, b.y), cellHeight)),
+    cellWidth: r(x.size),
+    cellHeight: r(y.size),
+    offsetX: r(x.offset),
+    offsetY: r(y.offset),
+    span: { cols: x.span, rows: y.span },
   };
 }

@@ -4,7 +4,7 @@
  * reaches the state reducer. Reference checks (does this map exist?) are done
  * later, by the reducer.
  */
-import type { AppearancePatch, ClientMessage } from "./protocol.ts";
+import type { AppearancePatch, ClientMessage, RulerLine } from "./protocol.ts";
 import { isCondition, type StatsPatch } from "./stats.ts";
 import { ABILITIES, type GridSettings } from "./types.ts";
 
@@ -180,6 +180,19 @@ function gridPatch(value: unknown, path: string): Partial<GridSettings> {
 /** Token positions are in cells (fractional on subdivided grids); the reducer snaps and clamps them. */
 const CELL = { min: -100_000, max: 100_000 };
 
+function point(value: unknown, path: string): { x: number; y: number } {
+  const o = obj(value, path);
+  onlyKeys(o, ["x", "y"], path);
+  return { x: num(o, "x", LIMITS.point, path, 2), y: num(o, "y", LIMITS.point, path, 2) };
+}
+
+function rulerLine(value: unknown, path: string): RulerLine | null {
+  if (value === null) return null;
+  const o = obj(value, path);
+  onlyKeys(o, ["mapId", "from", "to"], path);
+  return { mapId: id(o, "mapId", path), from: point(o.from, `${path}.from`), to: point(o.to, `${path}.to`) };
+}
+
 /** Validates one decoded message. Returns a clean, typed copy on success. */
 export function validateClientMessage(value: unknown): ValidationResult {
   try {
@@ -248,6 +261,10 @@ function validate(value: unknown): ClientMessage {
     case "ping":
       keys("mapId", "x", "y");
       return { type, mapId: id(m, "mapId", p), x: num(m, "x", LIMITS.point, p, 2), y: num(m, "y", LIMITS.point, p, 2) };
+    case "ruler":
+      keys("ruler");
+      if (!("ruler" in m)) fail(`${p}.ruler is required (null to remove)`);
+      return { type, ruler: rulerLine(m.ruler, `${p}.ruler`) };
     default:
       return fail(`unknown message type ${JSON.stringify(type)}`);
   }

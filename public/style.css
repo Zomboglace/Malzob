@@ -50,9 +50,8 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .layout { flex: 1; display: flex; min-height: 0; }
 /* The sidebar has a fixed width: its content must shrink to it, never scroll sideways. */
 .sidebar { flex: none; width: 280px; overflow-y: auto; overflow-x: hidden; background: var(--panel); border-right: 1px solid var(--border); }
-.sidebar.is-collapsed { width: 32px; display: flex; flex-direction: column; align-items: center; padding-top: 8px; }
-.sidebar-header { display: flex; justify-content: flex-end; padding: 6px 8px 0; }
-.sidebar-toggle { padding: 2px 8px; }
+.sidebar-toggle { padding: 2px 8px; font-size: 16px; line-height: 1.2; }
+.sidebar-toggle.is-on { background: var(--panel-2); color: var(--accent); }
 .panel { padding: 12px; border-bottom: 1px solid var(--border); }
 .stage { flex: 1; min-width: 0; position: relative; overflow: hidden; background: #111; }
 .empty { color: var(--muted); text-align: center; margin-top: 30vh; }
@@ -105,6 +104,8 @@ legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
 .tool-hint { margin: 0; background: rgba(0, 0, 0, 0.7); padding: 4px 8px; border-radius: 4px; font-size: 12px; }
 .ruler-line { stroke: #ffd54a; stroke-width: 2; stroke-dasharray: 6 4; }
 .ruler-end { fill: #ffd54a; }
+.ruler-remote .ruler-line { stroke-dasharray: 2 4; }
+.ruler-owner { font-weight: normal; }
 .ruler-label { fill: #fff; paint-order: stroke; stroke: #000; stroke-width: 3px; font-weight: bold; }
 .ruler-cells { font-weight: normal; }
 .calibration-cell { fill: rgba(212, 162, 76, 0.2); stroke: var(--accent); stroke-width: 2; }

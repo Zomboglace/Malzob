@@ -3,7 +3,8 @@
  * purely local UI state (selection, pan/zoom, drag in progress...).
  * A tiny observable; the UI re-renders on every change.
  */
-import type { Point } from "../shared/grid.ts";
+import type { MarkedCell, Point } from "../shared/grid.ts";
+import type { RulerLine } from "../shared/protocol.ts";
 import type { TableState, User } from "../shared/types.ts";
 import type { View } from "./view.ts";
 
@@ -19,7 +20,7 @@ export type Placing = { templateId: string } | { blank: true };
  *  - select:    click tokens, drag them, drag empty space to pan
  *  - ruler:     drag anywhere to measure
  *  - ping:      click to show everyone a spot
- *  - calibrate: click two opposite corners of one cell to set the grid
+ *  - calibrate: mark two cells far apart (two opposite corners each) to set the grid
  */
 export type Tool = "select" | "ruler" | "ping" | "calibrate";
 
@@ -31,6 +32,20 @@ export interface ActivePing {
   y: number;
   color: string;
   name: string;
+}
+
+/** Grid setup in progress: cells already marked, first corner of the current one, pointer position. */
+export interface Calibration {
+  mapId: string;
+  cells: MarkedCell[];
+  first: Point | null;
+  hover: Point | null;
+}
+
+/** Another user's measurement, as shown on this client. */
+export interface RemoteRuler extends RulerLine {
+  name: string;
+  color: string;
 }
 
 export interface ClientState {
@@ -47,10 +62,11 @@ export interface ClientState {
   /** Token being dragged and the cell it is currently over. */
   drag: { tokenId: string; col: number; row: number } | null;
   tool: Tool;
-  /** Current measurement, in map pixels (local only). */
-  ruler: { mapId: string; from: Point; to: Point } | null;
-  /** Grid calibration in progress: first corner clicked, and the pointer position. */
-  calibration: { mapId: string; first: Point | null; hover: Point | null } | null;
+  /** Your current measurement, in map pixels (also shown to the others). */
+  ruler: RulerLine | null;
+  /** The other users' measurements, by user id. */
+  remoteRulers: Record<string, RemoteRuler>;
+  calibration: Calibration | null;
   pings: ActivePing[];
   sidebarCollapsed: boolean;
   /** Last error to show to the user. */
@@ -70,6 +86,7 @@ export function initialClientState(): ClientState {
     drag: null,
     tool: "select",
     ruler: null,
+    remoteRulers: {},
     calibration: null,
     pings: [],
     sidebarCollapsed: false,

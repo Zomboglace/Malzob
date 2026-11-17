@@ -16,6 +16,18 @@ export function App({ app, state }: { app: Controller; state: ClientState }) {
   return (
     <div class="app">
       <header class="topbar">
+        {/* Outside the sidebar so it stays visible when the sidebar is hidden. */}
+        <button
+          type="button"
+          class={`sidebar-toggle ${state.sidebarCollapsed ? "" : "is-on"}`}
+          data-testid="sidebar-toggle"
+          title={state.sidebarCollapsed ? "Show the sidebar" : "Hide the sidebar"}
+          aria-label={state.sidebarCollapsed ? "Show the sidebar" : "Hide the sidebar"}
+          aria-expanded={!state.sidebarCollapsed}
+          onClick={() => app.toggleSidebar()}
+        >
+          ☰
+        </button>
         <h1>Malzob</h1>
         <span class={`status status-${state.connection}`} data-testid="status">
           {state.connection === "open" ? "Connected" : state.connection === "connecting" ? "Connecting…" : "Disconnected — retrying"}
@@ -31,19 +43,8 @@ export function App({ app, state }: { app: Controller; state: ClientState }) {
         </div>
       )}
       <div class="layout">
-        {state.sidebarCollapsed ? (
-          <nav class="sidebar is-collapsed" data-testid="sidebar">
-            <button type="button" class="sidebar-toggle" title="Show the sidebar" aria-label="Show the sidebar" onClick={() => app.toggleSidebar()}>
-              »
-            </button>
-          </nav>
-        ) : (
+        {!state.sidebarCollapsed && (
           <nav class="sidebar" data-testid="sidebar">
-            <div class="sidebar-header">
-              <button type="button" class="sidebar-toggle" title="Hide the sidebar" aria-label="Hide the sidebar" onClick={() => app.toggleSidebar()}>
-                «
-              </button>
-            </div>
             <MapsPanel app={app} state={state} />
             <TemplatesPanel app={app} state={state} />
           </nav>
