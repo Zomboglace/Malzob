@@ -4,7 +4,7 @@
  * Interactions:
  *  - wheel: zoom around the cursor (local)
  *  - drag on empty space: pan (local)
- *  - drag a token: move it, snapped to the grid; sent live to the server
+ *  - drag a token: move it, snapped to the grid (or its sub-cells); sent live to the server
  *  - click a token: open its stat sheet
  *  - click the map while "placing": create a token in that cell
  */
@@ -177,6 +177,7 @@ export class MapView extends Component<Props> {
   }
 }
 
+/** SVG path of the main grid lines (cell borders). */
 export function gridPath(map: TableMap): string {
   const { cellSize: c, offsetX: ox, offsetY: oy, cols, rows } = map.grid;
   const parts: string[] = [];
@@ -185,18 +186,35 @@ export function gridPath(map: TableMap): string {
   return parts.join("");
 }
 
+/** SVG path of the sub-cell lines inside each cell (empty when the grid is not split). */
+export function subGridPath(map: TableMap): string {
+  const { cellSize: c, offsetX: ox, offsetY: oy, cols, rows, subdivisions: n } = map.grid;
+  if (n <= 1) return "";
+  const step = c / n;
+  const parts: string[] = [];
+  for (let i = 0; i < cols * n; i++) {
+    if (i % n !== 0) parts.push(`M${ox + i * step} ${oy}V${oy + rows * c}`);
+  }
+  for (let j = 0; j < rows * n; j++) {
+    if (j % n !== 0) parts.push(`M${ox} ${oy + j * step}H${ox + cols * c}`);
+  }
+  return parts.join("");
+}
+
 function Grid({ map }: { map: TableMap }) {
+  const sub = subGridPath(map);
+  const common = {
+    fill: "none",
+    stroke: map.grid.color,
+    "stroke-width": 1,
+    "vector-effect": "non-scaling-stroke",
+    "pointer-events": "none",
+  } as const;
   return (
-    <path
-      class="grid"
-      d={gridPath(map)}
-      fill="none"
-      stroke={map.grid.color}
-      stroke-opacity={map.grid.opacity}
-      stroke-width={1}
-      vector-effect="non-scaling-stroke"
-      pointer-events="none"
-    />
+    <g class="grid-layer">
+      {sub && <path class="grid-sub" d={sub} {...common} stroke-opacity={map.grid.opacity * 0.5} stroke-dasharray="3 3" />}
+      <path class="grid" d={gridPath(map)} {...common} stroke-opacity={map.grid.opacity} />
+    </g>
   );
 }
 

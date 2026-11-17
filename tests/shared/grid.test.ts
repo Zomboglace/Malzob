@@ -3,6 +3,9 @@ import { describe, test } from "node:test";
 import {
   cellDistanceFeet,
   cellToPixel,
+  moveBy,
+  roundToStep,
+  subCellFeet,
   clampToGrid,
   defaultGrid,
   gridDimensionsFor,
@@ -49,8 +52,43 @@ describe("grid", () => {
     assert.deepEqual(snapToGrid(10_000, 10_000, grid), { col: 9, row: 7 });
   });
 
-  test("1 cell = 5 ft, diagonals count as one cell", () => {
+  test("1 cell = 5 ft by default, diagonals count as one cell", () => {
+    assert.equal(defaultGrid().feetPerCell, 5);
     assert.equal(cellDistanceFeet({ col: 0, row: 0 }, { col: 3, row: 1 }), 15);
     assert.equal(cellDistanceFeet({ col: 2, row: 2 }, { col: 2, row: 2 }), 0);
+  });
+
+  test("feet per cell is configurable", () => {
+    assert.equal(cellDistanceFeet({ col: 0, row: 0 }, { col: 3, row: 1 }, 10), 30);
+    assert.equal(cellDistanceFeet({ col: 0, row: 0 }, { col: 1.5, row: 0 }, 5), 7.5);
+    assert.equal(subCellFeet({ feetPerCell: 5, subdivisions: 2 }), 2.5);
+  });
+
+  test("sub-pixel cell sizes and offsets", () => {
+    const g = { ...grid, cellSize: 70.5, offsetX: 3.25, offsetY: 0.5 };
+    assert.deepEqual(cellToPixel({ col: 2, row: 1 }, g), { x: 144.25, y: 71 });
+    assert.deepEqual(pixelToCell(144.25 + 35, 71 + 35, g), { col: 2, row: 1 });
+    // No column lost to float error: 7 cells of 100.1 px in 700.7 px.
+    assert.deepEqual(gridDimensionsFor(700.7, 300.3, 100.1, 0, 0), { cols: 7, rows: 3 });
+  });
+
+  test("split cells: positions snap to sub-cells", () => {
+    const split = { ...grid, subdivisions: 2 }; // 50px cells -> 25px sub-cells
+    assert.equal(roundToStep(2.3, split), 2.5);
+    assert.equal(roundToStep(2.2, split), 2);
+    assert.equal(roundToStep(1 / 3, { subdivisions: 3 }), 0.333333);
+    // Centre of a 1x1 token dropped 25px right of cell (2,3)'s centre -> col 2.5.
+    const c = cellToPixel({ col: 2, row: 3 }, split);
+    assert.deepEqual(pixelToCell(c.x + 25 + 25, c.y + 25, split), { col: 2.5, row: 3 });
+    // Clamping still keeps the whole token inside, on a sub-cell.
+    assert.deepEqual(clampToGrid({ col: 8.74, row: -0.2 }, split, 2), { col: 8, row: 0 });
+    assert.deepEqual(clampToGrid({ col: 7.74, row: 5.26 }, split, 2), { col: 7.5, row: 5.5 });
+  });
+
+  test("moveBy moves by steps and clamps", () => {
+    const split = { ...grid, subdivisions: 4 };
+    assert.deepEqual(moveBy({ col: 0, row: 0 }, 1, 0, 0.25, split), { col: 0.25, row: 0 });
+    assert.deepEqual(moveBy({ col: 0.25, row: 0 }, -1, -1, 1, split), { col: 0, row: 0 });
+    assert.deepEqual(moveBy({ col: 9, row: 7 }, 1, 1, 0.25, split), { col: 9, row: 7 });
   });
 });

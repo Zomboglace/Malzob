@@ -11,10 +11,12 @@ very few dependencies, and tests for every feature.
 
 - **Maps**: several maps, one active map shown to everyone; a background image
   per map (PNG, JPEG or WebP, up to 15 MiB, stored on the server by content hash).
-- **Grid**: cell size, X/Y offset to align with the image, columns/rows
-  (derived from the image by default), line colour and opacity, show/hide.
-  1 cell = 5 ft.
-- **Tokens**: place, drag (snapped to the grid and kept inside it), delete,
+- **Grid**: cell size and X/Y offset with sub-pixel precision to align with
+  the image, columns/rows (derived from the image by default), line colour and
+  opacity, show/hide, distance per cell (5 ft by default, editable).
+  Cells can be split (2 × 2, 3 × 3, …) so tokens move by sub-cells.
+- **Tokens**: place, drag or move with the arrow keys (snapped to the grid or
+  its sub-cells and kept inside it), delete,
   duplicate, size in cells (1×1, 2×2, …), name, colour or image, HP bar.
 - **Templates** ("monster/character models"): a library of templates with a
   stat sheet. Placing a template creates a token with its own copy of the stats.
@@ -69,8 +71,18 @@ no authentication: anyone who can reach the server can edit the table.
 Quick tour: create a map in the left sidebar, upload a background image, adjust
 the grid until it matches the image, add a template (e.g. "Goblin"), click
 **Place** then click on the map. Click a token to open its stat sheet; drag it
-to move it. **Esc** cancels placing / closes the sheet; hold **Shift** while
-placing to place several tokens.
+to move it.
+
+Keyboard:
+
+| key | action |
+|-----|--------|
+| arrows | move the selected token by one step (one sub-cell when cells are split, otherwise one cell) |
+| Shift + arrows | move the selected token by one full cell |
+| Esc | cancel placing, otherwise close the stat sheet |
+| Shift + click (while placing) | place several tokens |
+
+Decimal fields (cell size, offsets, feet per cell) accept `70.5` or `70,5`.
 
 ## Test
 
@@ -123,8 +135,8 @@ Most features follow the same path. Example: a "visible to players" flag on toke
    sync or persistence.
 7. **Docs** — document the message in `docs/protocol.md`.
 
-Existing saved states will not have the new field: either give it a default
-when loading (`StateStore.load`) or treat `undefined` as the default.
+Existing saved states will not have the new field: give it a default in
+`src/shared/migrate.ts` (and bump `PROTOCOL_VERSION` if the messages change).
 
 Keep dependencies to a minimum; the project is designed to install in
 restricted environments.

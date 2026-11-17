@@ -76,6 +76,26 @@ describe("reducer: maps", () => {
     assert.deepEqual([s.tokens[0]!.col, s.tokens[0]!.row], [9, 4]);
   });
 
+  test("feet per cell and grid splits are map settings", () => {
+    const ctx = context();
+    let s = run(ctx, { type: "map.create", name: "Cave" }, { type: "token.create", mapId: "id1", col: 3, row: 3 });
+    s = must(applyIntent(s, { type: "map.setGrid", mapId: "id1", grid: { feetPerCell: 10, subdivisions: 2 } }, ctx));
+    assert.equal(s.maps[0]!.grid.feetPerCell, 10);
+    s = must(applyIntent(s, { type: "token.move", tokenId: "id2", col: 4.3, row: 2.7 }, ctx));
+    assert.deepEqual([s.tokens[0]!.col, s.tokens[0]!.row], [4.5, 2.5]);
+    // Going back to whole cells re-snaps tokens that sat on sub-cells.
+    s = must(applyIntent(s, { type: "map.setGrid", mapId: "id1", grid: { subdivisions: 1 } }, ctx));
+    assert.ok(Number.isInteger(s.tokens[0]!.col) && Number.isInteger(s.tokens[0]!.row));
+  });
+
+  test("without a split, fractional moves snap to whole cells", () => {
+    const ctx = context();
+    let s = run(ctx, { type: "map.create", name: "Cave" }, { type: "token.create", mapId: "id1", col: 1.4, row: 1.6 });
+    assert.deepEqual([s.tokens[0]!.col, s.tokens[0]!.row], [1, 2]);
+    s = must(applyIntent(s, { type: "map.setGrid", mapId: "id1", grid: { cellSize: 70.5, offsetX: 0.25 } }, ctx));
+    assert.equal(s.maps[0]!.grid.cellSize, 70.5);
+  });
+
   test("references to missing maps are rejected without changing the state", () => {
     const state = emptyState();
     const r = applyIntent(state, { type: "map.rename", mapId: "nope", name: "X" }, context());

@@ -42,11 +42,18 @@ export interface ImageRef {
 export type ImageExt = "png" | "jpg" | "webp";
 
 export interface GridSettings {
-  /** Size of one square cell in map (image) pixels. 1 cell = 5 ft. */
+  /** Size of one square cell in map (image) pixels. May be fractional (sub-pixel). */
   cellSize: number;
-  /** Horizontal / vertical offset of the grid origin, in map pixels. */
+  /** Horizontal / vertical offset of the grid origin, in map pixels. May be fractional. */
   offsetX: number;
   offsetY: number;
+  /** Distance represented by one cell (5 ft in standard 5e). */
+  feetPerCell: number;
+  /**
+   * Each cell is split into `subdivisions` x `subdivisions` sub-cells that
+   * tokens snap to (1 = no split, 2 = 4 sub-cells per cell, ...).
+   */
+  subdivisions: number;
   cols: number;
   rows: number;
   /** CSS colour, `#rrggbb`. */
@@ -71,7 +78,10 @@ export interface Token {
   mapId: string;
   /** Template this token was created from, if any (informational only). */
   templateId: string | null;
-  /** Top-left cell occupied by the token. */
+  /**
+   * Top-left cell occupied by the token, in cells. Fractional when the grid is
+   * subdivided (e.g. 2.5 = half-way through the third column with 2 subdivisions).
+   */
   col: number;
   row: number;
   /** Footprint in cells: 1 = 1x1, 2 = 2x2, ... */

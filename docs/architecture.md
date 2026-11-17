@@ -25,12 +25,13 @@ Imported by both sides; everything here is deterministic and unit-tested.
 | file           | role |
 |----------------|------|
 | `types.ts`     | the data model: `TableState`, `TableMap`, `GridSettings`, `Token`, `TokenTemplate`, `StatSheet`, `ImageRef`, `User` |
-| `grid.ts`      | grid maths: default grid, pixel ↔ cell, snapping, clamping, feet |
+| `grid.ts`      | grid maths: default grid, pixel ↔ cell, sub-cell snapping, clamping, keyboard steps, feet |
 | `stats.ts`     | D&D 5e: ability modifiers, conditions list, default sheet, sheet patches |
 | `protocol.ts`  | the WebSocket message types (see [protocol.md](protocol.md)) |
 | `validate.ts`  | structural validation of incoming messages, with `LIMITS` |
 | `reducer.ts`   | `applyIntent(state, intent, ctx)`: the only place where the state changes |
 | `imageInfo.ts` | reads format and size of PNG/JPEG/WebP from bytes |
+| `migrate.ts`   | `migrateState()`: fills in fields added after a state was saved |
 
 The reducer never mutates its input and never generates ids or reads files
 itself: ids and image lookups come from a `ReducerContext`. That keeps it
@@ -66,6 +67,7 @@ Message handling in `Table.receive`:
 | `controller.ts` | the API the UI calls: `send`, `select`, `setView`, `upload`… and server-message handling |
 | `connection.ts` | WebSocket with exponential-backoff reconnection; re-sends `hello` on each open |
 | `view.ts`       | pan/zoom maths (local to each client) |
+| `keyboard.ts`   | shortcuts: arrows move the selected token, Escape cancels / closes |
 | `upload.ts`     | image upload over HTTP |
 | `ui/App.tsx`    | layout, join form, user list |
 | `ui/MapView.tsx`| the SVG map: background, grid, tokens, drag, pan, zoom, placing |
@@ -85,7 +87,19 @@ token is a `<g data-token-id=…>` whose transform reflects its cell.
 - `data/state.json` — the whole `TableState`, written atomically
   (`state.json.tmp` then rename) at most every 200 ms and on shutdown. A
   corrupt file is moved aside (`state.json.corrupt-<time>`) and the server
-  starts empty.
+  starts empty. On load, `migrateState` adds defaults for fields introduced
+  by newer versions (e.g. `feetPerCell`, `subdivisions`).
+
+## Grid geometry
+
+A map's grid is defined in image pixels: `cellSize` (sub-pixel allowed), an
+origin offset (`offsetX`, `offsetY`), `cols` × `rows` cells, and the distance a
+cell represents (`feetPerCell`, 5 by default). `subdivisions` = n splits every
+cell into n × n sub-cells. Token positions are stored in cells (`col`, `row`)
+and are multiples of `1 / n`, so changing the cell size or offset never moves
+tokens relative to the grid. All snapping goes through `clampToGrid` in
+`src/shared/grid.ts`, used both by the server (authoritative) and by the client
+(drag preview, keyboard moves).
 - `data/images/<sha256>.<ext>` — uploaded images, deduplicated by content.
 - Connected users are not persisted.
 

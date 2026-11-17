@@ -70,6 +70,24 @@ describe("server: persistence", () => {
     await server2.close();
   });
 
+  test("states saved by an older version are migrated (new grid fields get defaults)", async () => {
+    const grid = { cellSize: 70, offsetX: 0, offsetY: 0, cols: 20, rows: 15, color: "#000000", opacity: 0.35, visible: true };
+    const old = {
+      rev: 4,
+      activeMapId: "m1",
+      maps: [{ id: "m1", name: "Old cave", background: null, width: 1400, height: 1050, grid }],
+      tokens: [],
+      templates: [],
+    };
+    writeFileSync(join(tmp.dir, "state.json"), JSON.stringify(old));
+    const server = await startTestServer(tmp.dir);
+    const map = server.table.getState().maps[0]!;
+    assert.equal(map.name, "Old cave");
+    assert.equal(map.grid.feetPerCell, 5);
+    assert.equal(map.grid.subdivisions, 1);
+    await server.close();
+  });
+
   test("a corrupt state file is moved aside and the server starts empty", async () => {
     writeFileSync(join(tmp.dir, "state.json"), "{ broken");
     const warn = console.warn;

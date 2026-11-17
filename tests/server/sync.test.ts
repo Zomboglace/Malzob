@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import type { RunningServer } from "../../src/server/app.ts";
+import { PROTOCOL_VERSION } from "../../src/shared/protocol.ts";
 import { makeTempDir, startTestServer, TestClient } from "../helpers/server.ts";
 
 describe("server: live sync between two clients", () => {
@@ -82,7 +83,7 @@ describe("server: live sync between two clients", () => {
   test("a reconnecting client resyncs with the full state", async () => {
     const { welcome } = await TestClient.join(server, "Jane Doe");
     assert.deepEqual(welcome.state, server.table.getState());
-    assert.equal(welcome.protocol, 1);
+    assert.equal(welcome.protocol, PROTOCOL_VERSION);
     assert.equal(welcome.you.name, "Jane Doe");
   });
 });

@@ -1,4 +1,5 @@
 /** Map list (create, rename, delete, activate), background upload and grid settings. */
+import { subCellFeet } from "../../shared/grid.ts";
 import { LIMITS } from "../../shared/validate.ts";
 import type { TableMap } from "../../shared/types.ts";
 import type { Controller } from "../controller.ts";
@@ -62,9 +63,16 @@ export function MapsPanel({ app, state }: Props) {
   );
 }
 
+/** Choices offered for splitting cells (n x n sub-cells). */
+const SPLIT_OPTIONS = [1, 2, 3, 4, 5];
+
+function formatFeet(feet: number): string {
+  return `${Number(feet.toFixed(2))} ft`;
+}
+
 function ActiveMapSettings({ app, map }: { app: Controller; map: TableMap }) {
   const grid = (patch: Record<string, number | string | boolean>) => app.send({ type: "map.setGrid", mapId: map.id, grid: patch });
-  const { cellSize, offset, gridCells } = LIMITS;
+  const { cellSize, offset, gridCells, feetPerCell, subdivisions } = LIMITS;
   return (
     <div class="active-map" data-testid="active-map">
       <TextField label="Name" name="activeMapName" value={map.name} onCommit={(name) => app.send({ type: "map.rename", mapId: map.id, name })} />
@@ -81,8 +89,9 @@ function ActiveMapSettings({ app, map }: { app: Controller; map: TableMap }) {
           Remove background
         </button>
       )}
-      <p class="hint">
-        {map.width} × {map.height} px · 1 cell = 5 ft
+      <p class="hint" data-testid="grid-hint">
+        {map.width} × {map.height} px · 1 cell = {formatFeet(map.grid.feetPerCell)}
+        {map.grid.subdivisions > 1 && ` · 1 sub-cell = ${formatFeet(subCellFeet(map.grid))}`}
       </p>
       <fieldset class="grid-settings">
         <legend>Grid</legend>
@@ -90,11 +99,30 @@ function ActiveMapSettings({ app, map }: { app: Controller; map: TableMap }) {
           <input type="checkbox" name="gridVisible" checked={map.grid.visible} onChange={(e) => grid({ visible: (e.currentTarget as HTMLInputElement).checked })} />
           <span>Show grid</span>
         </label>
-        <NumberField label="Cell size (px)" name="cellSize" value={map.grid.cellSize} min={cellSize.min} max={cellSize.max} onCommit={(v) => grid({ cellSize: v })} />
-        <NumberField label="Offset X" name="offsetX" value={map.grid.offsetX} min={offset.min} max={offset.max} onCommit={(v) => grid({ offsetX: v })} />
-        <NumberField label="Offset Y" name="offsetY" value={map.grid.offsetY} min={offset.min} max={offset.max} onCommit={(v) => grid({ offsetY: v })} />
-        <NumberField label="Columns" name="cols" value={map.grid.cols} min={gridCells.min} max={gridCells.max} onCommit={(v) => grid({ cols: v })} />
-        <NumberField label="Rows" name="rows" value={map.grid.rows} min={gridCells.min} max={gridCells.max} onCommit={(v) => grid({ rows: v })} />
+        <NumberField label="Cell size (px)" name="cellSize" decimals={4} value={map.grid.cellSize} min={cellSize.min} max={cellSize.max} onCommit={(v) => grid({ cellSize: v })} />
+        <div class="row">
+          <NumberField label="Offset X (px)" name="offsetX" decimals={4} value={map.grid.offsetX} min={offset.min} max={offset.max} onCommit={(v) => grid({ offsetX: v })} />
+          <NumberField label="Offset Y (px)" name="offsetY" decimals={4} value={map.grid.offsetY} min={offset.min} max={offset.max} onCommit={(v) => grid({ offsetY: v })} />
+        </div>
+        <NumberField label="Feet per cell" name="feetPerCell" decimals={2} value={map.grid.feetPerCell} min={feetPerCell.min} max={feetPerCell.max} onCommit={(v) => grid({ feetPerCell: v })} />
+        <label class="field">
+          <span>Split each cell</span>
+          <select
+            name="subdivisions"
+            value={String(map.grid.subdivisions)}
+            onChange={(e) => grid({ subdivisions: Number((e.currentTarget as HTMLSelectElement).value) })}
+          >
+            {SPLIT_OPTIONS.filter((n) => n <= subdivisions.max || n === map.grid.subdivisions).map((n) => (
+              <option key={n} value={String(n)}>
+                {n === 1 ? "No split" : `${n} × ${n} (${n * n} sub-cells)`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div class="row">
+          <NumberField label="Columns" name="cols" value={map.grid.cols} min={gridCells.min} max={gridCells.max} onCommit={(v) => grid({ cols: v })} />
+          <NumberField label="Rows" name="rows" value={map.grid.rows} min={gridCells.min} max={gridCells.max} onCommit={(v) => grid({ rows: v })} />
+        </div>
         <ColorField label="Line colour" name="gridColor" value={map.grid.color} onCommit={(v) => grid({ color: v })} />
         <label class="field">
           <span>Opacity</span>

@@ -8,7 +8,8 @@
 import type { StatsPatch } from "./stats.ts";
 import type { GridSettings, TableState, User } from "./types.ts";
 
-export const PROTOCOL_VERSION = 1;
+/** 2: fractional grid values and token positions, feetPerCell, subdivisions. */
+export const PROTOCOL_VERSION = 2;
 export const WS_PATH = "/ws";
 
 /** Appearance fields shared by token and template updates. */

@@ -1,6 +1,6 @@
 # WebSocket protocol
 
-Version: **1** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
+Version: **2** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
 source of truth for the types below).
 
 - Endpoint: `ws://<host>:<port>/ws` (`wss://` behind HTTPS).
@@ -11,9 +11,18 @@ source of truth for the types below).
 - Clients send **intents**. The server validates each one (`src/shared/validate.ts`),
   applies it to the authoritative state (`src/shared/reducer.ts`), saves the
   state, then broadcasts it. Unknown fields are rejected, strings are trimmed
-  and length-limited, numbers must be integers within range (see `LIMITS`).
-- Positions are in **grid cells** (`col`, `row` = top-left cell of the token).
-  The server snaps and clamps them so a token always stays inside the grid.
+  and length-limited, numbers must be within range (see `LIMITS`). Counts
+  (`cols`, `rows`, `size`, `subdivisions`, stats) must be integers; grid
+  geometry and positions may be fractional and are rounded (4 decimals for
+  pixels, 6 for positions).
+- Positions are in **grid cells** (`col`, `row` = top-left of the token).
+  When the map's grid is split (`subdivisions` > 1) positions can be fractional,
+  in steps of `1 / subdivisions` (e.g. `2.5` with a 2 × 2 split). The server
+  snaps them to that step and clamps them so a token always stays inside the grid.
+
+Changes in version 2: `cellSize`, `offsetX`, `offsetY` accept sub-pixel
+values; new grid fields `feetPerCell` and `subdivisions`; token `col`/`row`
+can be fractional.
 
 ## Session flow
 
@@ -94,9 +103,11 @@ Partial update of the grid settings. All fields are optional:
 
 | field      | type    | range            |
 |------------|---------|------------------|
-| `cellSize` | integer | 8–1000 (px)      |
-| `offsetX`  | integer | −10000–10000 (px)|
-| `offsetY`  | integer | −10000–10000 (px)|
+| `cellSize` | number  | 4–1000 (px, sub-pixel allowed) |
+| `offsetX`  | number  | −10000–10000 (px, sub-pixel allowed) |
+| `offsetY`  | number  | −10000–10000 (px, sub-pixel allowed) |
+| `feetPerCell` | number | 0.1–1000 (default 5) |
+| `subdivisions` | integer | 1–10: each cell is split into n × n sub-cells that tokens snap to (1 = no split) |
 | `cols`     | integer | 1–500            |
 | `rows`     | integer | 1–500            |
 | `color`    | string  | `#rrggbb`        |
@@ -105,9 +116,10 @@ Partial update of the grid settings. All fields are optional:
 
 If the map has a background and `cellSize`/`offsetX`/`offsetY` change without
 explicit `cols`/`rows`, columns and rows are re-derived from the image. Tokens
-are re-clamped inside the new grid.
+are re-snapped (to the new `subdivisions`) and re-clamped inside the new grid.
 ```json
-{ "type": "map.setGrid", "mapId": "8c1f…", "grid": { "cellSize": 64, "offsetX": 12, "opacity": 0.5 } }
+{ "type": "map.setGrid", "mapId": "8c1f…", "grid": { "cellSize": 70.25, "offsetX": 12.5, "opacity": 0.5 } }
+{ "type": "map.setGrid", "mapId": "8c1f…", "grid": { "feetPerCell": 5, "subdivisions": 2 } }
 ```
 
 ### Tokens
@@ -120,9 +132,11 @@ of the template's stats, size, colour and image; without it, a blank 1×1 token.
 ```
 
 #### `token.move`
-Sent live while dragging (each time the token enters a new cell).
+Sent live while dragging (each time the token enters a new cell or sub-cell)
+and for each arrow-key move.
 ```json
 { "type": "token.move", "tokenId": "d4a9…", "col": 5, "row": 7 }
+{ "type": "token.move", "tokenId": "d4a9…", "col": 5.5, "row": 7 }
 ```
 
 #### `token.update`
@@ -190,7 +204,7 @@ Answer to `hello`: who you are, the full state and the connected users.
 ```json
 {
   "type": "welcome",
-  "protocol": 1,
+  "protocol": 2,
   "you": { "id": "5d0c…", "name": "Jane Doe" },
   "state": { "rev": 12, "activeMapId": "8c1f…", "maps": [], "tokens": [], "templates": [] },
   "users": [{ "id": "5d0c…", "name": "Jane Doe" }]
@@ -214,7 +228,10 @@ patches instead; `rev` makes that possible without changing the model.)
         "background": { "hash": "3a7b…", "ext": "png", "width": 1400, "height": 1050 },
         "width": 1400,
         "height": 1050,
-        "grid": { "cellSize": 70, "offsetX": 0, "offsetY": 0, "cols": 20, "rows": 15, "color": "#000000", "opacity": 0.35, "visible": true }
+        "grid": {
+          "cellSize": 70, "offsetX": 0, "offsetY": 0, "feetPerCell": 5, "subdivisions": 2,
+          "cols": 20, "rows": 15, "color": "#000000", "opacity": 0.35, "visible": true
+        }
       }
     ],
     "tokens": [
@@ -222,7 +239,7 @@ patches instead; `rev` makes that possible without changing the model.)
         "id": "d4a9…",
         "mapId": "8c1f…",
         "templateId": "b02e…",
-        "col": 5,
+        "col": 5.5,
         "row": 7,
         "size": 1,
         "color": "#c0392b",

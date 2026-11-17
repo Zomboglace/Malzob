@@ -5,6 +5,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { migrateState } from "../shared/migrate.ts";
 import { emptyState } from "../shared/reducer.ts";
 import type { TableState } from "../shared/types.ts";
 
@@ -23,7 +24,7 @@ export class StateStore {
     this.file = join(dataDir, STATE_FILE);
   }
 
-  /** Loads the saved state, or returns an empty one. A corrupt file is kept aside. */
+  /** Loads the saved state (migrated to the current model), or an empty one. A corrupt file is kept aside. */
   load(): TableState {
     if (!existsSync(this.file)) return emptyState();
     try {
@@ -31,7 +32,7 @@ export class StateStore {
       if (!Array.isArray(data.maps) || !Array.isArray(data.tokens) || !Array.isArray(data.templates)) {
         throw new Error("unexpected shape");
       }
-      return { ...emptyState(), ...data };
+      return migrateState(data);
     } catch (err) {
       const backup = `${this.file}.corrupt-${Date.now()}`;
       renameSync(this.file, backup);

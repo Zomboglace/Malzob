@@ -3,6 +3,7 @@ import { render } from "preact";
 import { WS_PATH } from "../shared/protocol.ts";
 import { Connection, type SocketLike, socketUrl } from "./connection.ts";
 import { createController } from "./controller.ts";
+import { handleKeyDown } from "./keyboard.ts";
 import { Store } from "./store.ts";
 import { App } from "./ui/App.tsx";
 import { createUploader } from "./upload.ts";
@@ -52,9 +53,5 @@ const previous = savedName();
 const input = root.querySelector<HTMLInputElement>("input[name=displayName]");
 if (previous && input) input.value = previous;
 
-// Escape cancels placing / closes the stat sheet.
-addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  if (store.get().placing) app.setPlacing(null);
-  else app.select(null);
-});
+// Arrow keys move the selected token; Escape cancels placing / closes the sheet.
+addEventListener("keydown", (e) => handleKeyDown(app, e));

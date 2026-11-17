@@ -13,8 +13,12 @@ export const LIMITS = {
   notesLength: 20_000,
   idLength: 64,
   tokenSize: { min: 1, max: 10 },
-  cellSize: { min: 8, max: 1000 },
+  cellSize: { min: 4, max: 1000 },
   offset: { min: -10_000, max: 10_000 },
+  feetPerCell: { min: 0.1, max: 1000 },
+  subdivisions: { min: 1, max: 10 },
+  /** Decimals kept for sub-pixel grid values and fractional positions. */
+  decimals: 4,
   gridCells: { min: 1, max: 500 },
   score: { min: 0, max: 50 },
   stat: { min: -1000, max: 100_000 },
@@ -67,6 +71,14 @@ function int(o: Obj, key: string, range: { min: number; max: number }, path: str
   if (typeof v !== "number" || !Number.isInteger(v)) fail(`${path}.${key} must be an integer`);
   if (v < range.min || v > range.max) fail(`${path}.${key} must be between ${range.min} and ${range.max}`);
   return v;
+}
+
+/** A finite number in range, rounded to `decimals` places. */
+function num(o: Obj, key: string, range: { min: number; max: number }, path: string, decimals: number = LIMITS.decimals): number {
+  const v = o[key];
+  if (typeof v !== "number" || !Number.isFinite(v)) fail(`${path}.${key} must be a number`);
+  if (v < range.min || v > range.max) fail(`${path}.${key} must be between ${range.min} and ${range.max}`);
+  return Number(v.toFixed(decimals));
 }
 
 function color(o: Obj, key: string, path: string): string {
@@ -135,11 +147,14 @@ function appearancePatch(value: unknown, path: string): AppearancePatch {
 
 function gridPatch(value: unknown, path: string): Partial<GridSettings> {
   const o = obj(value, path);
-  onlyKeys(o, ["cellSize", "offsetX", "offsetY", "cols", "rows", "color", "opacity", "visible"], path);
+  const keys = ["cellSize", "offsetX", "offsetY", "feetPerCell", "subdivisions", "cols", "rows", "color", "opacity", "visible"];
+  onlyKeys(o, keys, path);
   const out: Obj = {};
-  opt(o, out, "cellSize", () => int(o, "cellSize", LIMITS.cellSize, path));
-  opt(o, out, "offsetX", () => int(o, "offsetX", LIMITS.offset, path));
-  opt(o, out, "offsetY", () => int(o, "offsetY", LIMITS.offset, path));
+  opt(o, out, "cellSize", () => num(o, "cellSize", LIMITS.cellSize, path));
+  opt(o, out, "offsetX", () => num(o, "offsetX", LIMITS.offset, path));
+  opt(o, out, "offsetY", () => num(o, "offsetY", LIMITS.offset, path));
+  opt(o, out, "feetPerCell", () => num(o, "feetPerCell", LIMITS.feetPerCell, path));
+  opt(o, out, "subdivisions", () => int(o, "subdivisions", LIMITS.subdivisions, path));
   opt(o, out, "cols", () => int(o, "cols", LIMITS.gridCells, path));
   opt(o, out, "rows", () => int(o, "rows", LIMITS.gridCells, path));
   opt(o, out, "color", () => color(o, "color", path));
@@ -155,6 +170,7 @@ function gridPatch(value: unknown, path: string): Partial<GridSettings> {
   return out as Partial<GridSettings>;
 }
 
+/** Token positions are in cells (fractional on subdivided grids); the reducer snaps and clamps them. */
 const CELL = { min: -100_000, max: 100_000 };
 
 /** Validates one decoded message. Returns a clean, typed copy on success. */
@@ -196,13 +212,13 @@ function validate(value: unknown): ClientMessage {
       return { type, mapId: id(m, "mapId", p), grid: gridPatch(m.grid, `${p}.grid`) };
     case "token.create": {
       keys("mapId", "col", "row", "templateId");
-      const msg: ClientMessage = { type, mapId: id(m, "mapId", p), col: int(m, "col", CELL, p), row: int(m, "row", CELL, p) };
+      const msg: ClientMessage = { type, mapId: id(m, "mapId", p), col: num(m, "col", CELL, p, 6), row: num(m, "row", CELL, p, 6) };
       if (m.templateId !== undefined) msg.templateId = id(m, "templateId", p);
       return msg;
     }
     case "token.move":
       keys("tokenId", "col", "row");
-      return { type, tokenId: id(m, "tokenId", p), col: int(m, "col", CELL, p), row: int(m, "row", CELL, p) };
+      return { type, tokenId: id(m, "tokenId", p), col: num(m, "col", CELL, p, 6), row: num(m, "row", CELL, p, 6) };
     case "token.update":
       keys("tokenId", "changes");
       return { type, tokenId: id(m, "tokenId", p), changes: appearancePatch(m.changes, `${p}.changes`) };

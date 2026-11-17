@@ -67,6 +67,21 @@ export class TextField extends LiveField<string, HTMLInputElement, FieldProps<st
 interface NumberProps extends FieldProps<number> {
   min?: number;
   max?: number;
+  /**
+   * Decimal places accepted (default 0 = integers only). Decimal fields are
+   * text inputs so that both "70.5" and "70,5" are accepted in every locale.
+   */
+  decimals?: number;
+}
+
+/** Parses "12", "-3", "70.5" or "70,5"; returns undefined if not a number. */
+export function parseNumber(text: string, decimals = 0): number | undefined {
+  const t = text.trim().replace(",", ".");
+  if (t === "" || !/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t)) return undefined;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return undefined;
+  if (decimals === 0) return Number.isInteger(n) ? n : undefined;
+  return Number(n.toFixed(decimals));
 }
 
 export class NumberField extends LiveField<number, HTMLInputElement, NumberProps> {
@@ -74,24 +89,29 @@ export class NumberField extends LiveField<number, HTMLInputElement, NumberProps
     return String(v);
   }
   protected parse(text: string): number | undefined {
-    const n = Number(text);
-    if (text.trim() === "" || !Number.isInteger(n)) return undefined;
+    const n = parseNumber(text, this.props.decimals ?? 0);
+    if (n === undefined) return undefined;
     const { min = -Infinity, max = Infinity } = this.props;
     return Math.min(max, Math.max(min, n));
   }
   render() {
+    const decimal = (this.props.decimals ?? 0) > 0;
     return (
       <label class={`field ${this.props.class ?? ""}`}>
         <span>{this.props.label}</span>
-        <input
-          ref={this.ref}
-          type="number"
-          name={this.props.name}
-          min={this.props.min}
-          max={this.props.max}
-          step={1}
-          onChange={this.commit}
-        />
+        {decimal ? (
+          <input ref={this.ref} type="text" inputMode="decimal" name={this.props.name} onChange={this.commit} />
+        ) : (
+          <input
+            ref={this.ref}
+            type="number"
+            name={this.props.name}
+            min={this.props.min}
+            max={this.props.max}
+            step={1}
+            onChange={this.commit}
+          />
+        )}
       </label>
     );
   }
