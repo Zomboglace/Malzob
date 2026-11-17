@@ -36,12 +36,26 @@ describe("UI: the owner's own view and the players' maps", () => {
     assert.equal(ui.$("svg[data-testid=map]").querySelectorAll(".token").length, 0);
   });
 
-  test("the first map is marked as where new players start, with player counts", () => {
+  test("★ marks the default map (the first one until chosen); clicking ☆ chooses another", () => {
     ui = mount({ table: twoMaps(), users });
-    assert.ok(ui.$('[data-map-id="map1"] .map-first'));
-    assert.equal(ui.root.querySelector('[data-map-id="map2"] .map-first'), null);
+    assert.equal(ui.$('[data-map-id="map1"] .map-default').textContent, "★");
+    assert.equal(ui.$('[data-map-id="map2"] .map-default').textContent, "☆");
     assert.equal(ui.$('[data-map-id="map1"] .map-player-count').textContent, "1"); // John (default)
     assert.equal(ui.$('[data-map-id="map2"] .map-player-count').textContent, "1"); // Mary (sent there)
+    (ui.$('[data-map-id="map1"] .map-default') as HTMLElement).click();
+    assert.deepEqual(ui.sent, [], "already the default");
+    (ui.$('[data-map-id="map2"] .map-default') as HTMLElement).click();
+    assert.deepEqual(ui.sent, [{ type: "map.setDefault", mapId: "map2" }]);
+  });
+
+  test("with a chosen default, players without a map are counted there and the owner starts there", () => {
+    const table = twoMaps();
+    table.defaultMapId = "map2";
+    ui = mount({ table, users });
+    assert.equal(ui.$('[data-map-id="map2"] .map-default').textContent, "★");
+    assert.equal(ui.$('[data-map-id="map2"] .map-player-count').textContent, "2"); // John (default) + Mary
+    assert.equal(ui.$('[data-map-id="map1"] .map-player-count').textContent, "");
+    assert.equal((ui.$("input[name=activeMapName]") as HTMLInputElement).value, "Dungeon");
   });
 
   test("the Players panel lists connected and offline players with their map, and sends one player", () => {
@@ -86,12 +100,13 @@ describe("UI: unique templates", () => {
     assert.ok(ui.$('[data-template-id="tpl1"] .unique-mark'));
   });
 
-  test("a token of a unique template says that edits also update the template", () => {
+  test("a token of a unique template says it is linked to the template and its other tokens", () => {
     const table = sampleTable();
     table.templates[0]!.unique = true;
+    table.tokens.push({ ...structuredClone(table.tokens[0]!), id: "tok2" });
     ui = mount({ table, users });
     ui.app.select({ kind: "token", id: "tok1" });
-    assert.match(ui.$("[data-testid=unique-hint]").textContent ?? "", /“Goblin”/);
+    assert.match(ui.$("[data-testid=unique-hint]").textContent ?? "", /“Goblin”.*template and its 1 other token/);
     changeValue(ui.$("input[name=hpCurrent]") as HTMLInputElement, "2");
     assert.deepEqual(ui.sent, [{ type: "token.update", tokenId: "tok1", changes: { stats: { hp: { current: 2 } } } }], "one message; the server updates both");
   });

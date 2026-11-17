@@ -33,5 +33,7 @@ export function migrateState(raw: TableState): TableState {
   delete (state as TableState & { activeMapId?: unknown }).activeMapId;
   state.playerMaps = state.playerMaps ?? {};
   state.templates = state.templates.map((t) => ({ ...t, unique: t.unique ?? false }));
+  // Version 7: a chosen default map (null = the first map).
+  state.defaultMapId = state.defaultMapId ?? null;
   return state;
 }

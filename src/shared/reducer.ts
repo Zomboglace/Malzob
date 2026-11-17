@@ -28,6 +28,20 @@ export type ReducerResult = { ok: true; state: TableState } | { ok: false; code:
 export const DEFAULT_TOKEN_COLOR = "#c0392b";
 
 /**
+ * Applies `changes` to every token placed from a unique template (except
+ * `skip`, already updated), keeping each one inside its map's grid.
+ */
+function updateLinkedTokens(s: TableState, template: TokenTemplate, changes: AppearancePatch, ctx: ReducerContext, skip?: Token): void {
+  if (Object.keys(changes).length === 0) return;
+  for (const other of s.tokens) {
+    if (other === skip || other.templateId !== template.id) continue;
+    applyAppearance(other, changes, ctx);
+    const map = s.maps.find((x) => x.id === other.mapId);
+    if (map) Object.assign(other, clampToGrid(other, map.grid, tokenSize(other, map.grid)));
+  }
+}
+
+/**
  * A new token, from a template (an independent copy of its stats, size,
  * colour, image and control) or blank. Its map and position are set by the
  * caller.
@@ -58,7 +72,7 @@ function dimensionsFromImage(map: TableMap): { cols: number; rows: number } {
 }
 
 export function emptyState(): TableState {
-  return { rev: 0, maps: [], tokens: [], templates: [], playerMaps: {} };
+  return { rev: 0, maps: [], tokens: [], templates: [], playerMaps: {}, defaultMapId: null };
 }
 
 class Rejected extends Error {
@@ -143,10 +157,15 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
       find(s.maps, m.mapId, "map");
       s.maps = s.maps.filter((x) => x.id !== m.mapId);
       s.tokens = s.tokens.filter((t) => t.mapId !== m.mapId);
-      // Players who were on this map go back to the first map.
+      // Players who were on this map go back to the default map; if it was the
+      // default, the first map becomes the default again.
       for (const [key, pm] of Object.entries(s.playerMaps)) if (pm.mapId === m.mapId) delete s.playerMaps[key];
+      if (s.defaultMapId === m.mapId) s.defaultMapId = null;
       return;
     }
+    case "map.setDefault":
+      s.defaultMapId = find(s.maps, m.mapId, "map").id;
+      return;
     case "player.setMap": {
       const map = find(s.maps, m.mapId, "map");
       s.playerMaps[playerKey(m.player)] = { name: m.player.trim(), mapId: map.id };
@@ -203,9 +222,12 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
       applyAppearance(token, m.changes, ctx);
       const map = find(s.maps, token.mapId, "map");
       Object.assign(token, clampToGrid(token, map.grid, tokenSize(token, map.grid)));
-      // A unique template follows the edits made to its tokens.
+      // A unique template and all its tokens are linked: the edit applies to all of them.
       const template = token.templateId ? s.templates.find((t) => t.id === token.templateId) : undefined;
-      if (template?.unique) applyAppearance(template, m.changes, ctx);
+      if (template?.unique) {
+        applyAppearance(template, m.changes, ctx);
+        updateLinkedTokens(s, template, m.changes, ctx, token);
+      }
       return;
     }
     case "token.duplicate": {
@@ -239,8 +261,11 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
     }
     case "template.update": {
       const template = find(s.templates, m.templateId, "template");
-      applyAppearance(template, m.changes, ctx);
-      if (m.changes.unique !== undefined) template.unique = m.changes.unique;
+      const { unique, ...changes } = m.changes;
+      applyAppearance(template, changes, ctx);
+      if (unique !== undefined) template.unique = unique;
+      // Editing a unique template edits all its tokens too (other templates never change placed tokens).
+      if (template.unique) updateLinkedTokens(s, template, changes, ctx);
       return;
     }
     case "template.delete":

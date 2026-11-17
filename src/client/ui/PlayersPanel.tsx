@@ -1,8 +1,8 @@
 /**
- * Owner only: which map each player sees. Players start on the first map;
- * the owner sends each of them to any map, individually.
+ * Owner only: which map each player sees. Players start on the default map
+ * (★ in the map list); the owner sends each of them to any map, individually.
  */
-import { playerKey, playerMapId } from "../../shared/permissions.ts";
+import { defaultMapId, playerKey, playerMapId } from "../../shared/permissions.ts";
 import type { Controller } from "../controller.ts";
 import type { ClientState } from "../store.ts";
 
@@ -36,7 +36,7 @@ export function PlayersPanel({ app, state }: { app: Controller; state: ClientSta
     <section class="panel players-panel" data-testid="players-panel">
       <h2>Players</h2>
       {players.length === 0 ? (
-        <p class="hint">No players yet. They start on the first map ({table.maps[0]!.name}).</p>
+        <p class="hint">No players yet. They start on {table.maps.find((m) => m.id === defaultMapId(table))?.name} (★).</p>
       ) : (
         <ul class="player-list">
           {players.map((p) => (

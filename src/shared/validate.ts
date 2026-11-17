@@ -249,6 +249,7 @@ function validate(value: unknown): ClientMessage {
       keys("mapId", "name");
       return { type, mapId: id(m, "mapId", p), name: name(m, "name", p) };
     case "map.delete":
+    case "map.setDefault":
       keys("mapId");
       return { type, mapId: id(m, "mapId", p) };
     case "player.setMap":

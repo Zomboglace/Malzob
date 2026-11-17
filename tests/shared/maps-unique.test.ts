@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { migrateState } from "../../src/shared/migrate.ts";
-import { playerMapId } from "../../src/shared/permissions.ts";
+import { defaultMapId, playerMapId, viewFor } from "../../src/shared/permissions.ts";
 import { applyIntent, emptyState, newToken, type ReducerContext, type StateIntent } from "../../src/shared/reducer.ts";
 import type { TableState } from "../../src/shared/types.ts";
 import { validateClientMessage } from "../../src/shared/validate.ts";
@@ -18,6 +18,36 @@ function run(...intents: StateIntent[]): TableState {
   }
   return s;
 }
+
+describe("default map", () => {
+  test("the owner chooses where players start; deleting it falls back to the first map", () => {
+    let s = run(
+      { type: "map.create", name: "Tavern" }, // id1
+      { type: "map.create", name: "Dungeon" }, // id2
+      { type: "map.create", name: "Castle" }, // id3
+    );
+    assert.equal(defaultMapId(s), "id1", "the first map until one is chosen");
+    const r = applyIntent(s, { type: "map.setDefault", mapId: "id3" }, ctx);
+    assert.ok(r.ok);
+    s = r.state;
+    assert.equal(s.defaultMapId, "id3");
+    assert.equal(playerMapId(s, "New Player"), "id3");
+    const del = applyIntent(s, { type: "map.delete", mapId: "id3" }, ctx);
+    assert.ok(del.ok);
+    assert.equal(del.state.defaultMapId, null);
+    assert.equal(playerMapId(del.state, "New Player"), "id1");
+    const bad = applyIntent(s, { type: "map.setDefault", mapId: "nope" }, ctx);
+    assert.equal(!bad.ok && bad.code, "not_found");
+    assert.ok(validateClientMessage({ type: "map.setDefault", mapId: "m1" }).ok);
+  });
+
+  test("players do not see which map is the default", () => {
+    const s = run({ type: "map.create", name: "Tavern" }, { type: "map.create", name: "Dungeon" }, { type: "map.setDefault", mapId: "id2" });
+    const view = viewFor(s, { name: "Jane Doe", role: "player" });
+    assert.equal(view.defaultMapId, null);
+    assert.deepEqual(view.maps.map((m) => m.name), ["Dungeon"]);
+  });
+});
 
 describe("per-player maps", () => {
   test("players see the first map until the owner sends them elsewhere", () => {
@@ -70,12 +100,51 @@ describe("unique templates", () => {
     assert.equal(tpl.size, null);
   });
 
-  test("template edits still do not change tokens already placed, even unique ones", () => {
-    let s = setup(true);
-    const r = applyIntent(s, { type: "template.update", templateId: "id2", changes: { stats: { ac: 20 } } }, ctx);
-    assert.ok(r.ok);
-    s = r.state;
+  test("all tokens of a unique template are linked, on every map; positions stay their own", () => {
+    let s = setup(true); // token id3 on map id1
+    const more = (intents: StateIntent[]) => {
+      for (const i of intents) {
+        const r = applyIntent(s, i, ctx);
+        if (!r.ok) assert.fail(r.error);
+        s = r.state;
+      }
+    };
+    more([
+      { type: "map.create", name: "Castle" }, // id4
+      { type: "token.create", mapId: "id4", col: 1, row: 1, templateId: "id2" }, // id5, starts from the template
+      { type: "token.update", tokenId: "id5", changes: { stats: { hp: { current: 12 } }, control: { players: ["Jane Doe"] } } },
+    ]);
+    const [a, b] = s.tokens;
+    assert.equal(a!.stats.hp.current, 12, "the token on the other map changed too");
+    assert.equal(b!.stats.hp.current, 12);
+    assert.equal(s.templates[0]!.stats.hp.current, 12);
+    assert.deepEqual(a!.control.players, ["Jane Doe"]);
+    assert.deepEqual([a!.col, a!.row, b!.col, b!.row], [5, 5, 1, 1]);
+
+    // Editing the template edits its tokens too; sizes are re-clamped on each map.
+    more([{ type: "template.update", templateId: "id2", changes: { stats: { ac: 20 }, size: 3 } }]);
+    assert.deepEqual(s.tokens.map((t) => [t.stats.ac, t.size]), [[20, 3], [20, 3]]);
+  });
+
+  test("normal templates never change placed tokens, and their tokens are independent", () => {
+    let s = setup(false);
+    const r1 = applyIntent(s, { type: "template.update", templateId: "id2", changes: { stats: { ac: 20 } } }, ctx);
+    assert.ok(r1.ok);
+    s = r1.state;
     assert.equal(s.tokens[0]!.stats.ac, 10);
+    const r2 = applyIntent(s, { type: "token.create", mapId: "id1", col: 0, row: 0, templateId: "id2" }, ctx);
+    assert.ok(r2.ok);
+    const r3 = applyIntent(r2.state, { type: "token.update", tokenId: r2.state.tokens[1]!.id, changes: { stats: { ac: 1 } } }, ctx);
+    assert.ok(r3.ok);
+    assert.deepEqual(r3.state.tokens.map((t) => t.stats.ac), [10, 1]);
+  });
+
+  test("ticking 'unique' alone does not overwrite existing tokens", () => {
+    const s = setup(false);
+    const r = applyIntent(s, { type: "template.update", templateId: "id2", changes: { unique: true } }, ctx);
+    assert.ok(r.ok);
+    assert.equal(r.state.tokens[0]!.stats.hp.current, 40);
+    assert.equal(r.state.templates[0]!.stats.hp.current, 90);
   });
 
   test("newToken copies a template independently (the hook for future placement rules)", () => {
@@ -100,11 +169,12 @@ describe("unique templates", () => {
 });
 
 describe("migration to version 6", () => {
-  test("the single active map is dropped; templates become non-unique", () => {
+  test("the single active map is dropped; templates become non-unique; no default map chosen", () => {
     const old = { rev: 9, activeMapId: "m1", maps: [], tokens: [], templates: [{ id: "t", size: null, color: "#000000", image: null, stats: {}, control: { players: [], everyone: false } }] };
     const s = migrateState(old as unknown as TableState);
     assert.equal("activeMapId" in s, false);
     assert.deepEqual(s.playerMaps, {});
     assert.equal(s.templates[0]!.unique, false);
+    assert.equal(s.defaultMapId, null);
   });
 });

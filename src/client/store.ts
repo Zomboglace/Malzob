@@ -4,6 +4,7 @@
  * A tiny observable; the UI re-renders on every change.
  */
 import type { MarkedCell, Point } from "../shared/grid.ts";
+import { defaultMapId } from "../shared/permissions.ts";
 import type { RulerLine } from "../shared/protocol.ts";
 import type { TableMap, TableState, User } from "../shared/types.ts";
 import type { View } from "./view.ts";
@@ -79,11 +80,13 @@ export interface ClientState {
 
 /**
  * The map shown on this client: for the owner, the map they chose to look at
- * (or the first one); for a player, the only map the server sends them.
+ * (or the default map); for a player, the only map the server sends them.
  */
 export function currentMap(state: ClientState): TableMap | null {
-  const maps = state.table?.maps ?? [];
-  return maps.find((m) => m.id === state.viewMapId) ?? maps[0] ?? null;
+  const table = state.table;
+  if (!table) return null;
+  const startId = defaultMapId(table);
+  return table.maps.find((m) => m.id === state.viewMapId) ?? table.maps.find((m) => m.id === startId) ?? null;
 }
 
 export function initialClientState(): ClientState {

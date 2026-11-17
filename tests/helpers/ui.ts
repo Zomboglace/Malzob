@@ -23,6 +23,7 @@ export function sampleTable(): TableState {
   return {
     rev: 3,
     playerMaps: {},
+    defaultMapId: null,
     maps: [{ id: "map1", name: "Cave", background: null, width: 500, height: 400, grid }],
     templates: [{ id: "tpl1", size: 1, color: "#00aa00", image: null, stats: goblin, control: { players: [], everyone: false }, unique: false }],
     tokens: [

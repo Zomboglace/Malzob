@@ -36,7 +36,7 @@ export function TemplatesPanel({ app, state }: { app: Controller; state: ClientS
             <span class="swatch" style={{ background: t.color }} />
             <button type="button" class="template-open" title="Edit template" onClick={() => app.select({ kind: "template", id: t.id })}>
               {t.stats.name}
-              {t.unique && <span class="unique-mark" title="Unique: edits to its tokens also update it"> ◆</span>}
+              {t.unique && <span class="unique-mark" title="Unique: this template and all its tokens are linked"> ◆</span>}
             </button>
             <button
               type="button"

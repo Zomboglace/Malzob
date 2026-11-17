@@ -3,6 +3,7 @@
  * the players), who is on each map, background upload and grid settings.
  */
 import { subCellFeet } from "../../shared/grid.ts";
+import { defaultMapId } from "../../shared/permissions.ts";
 import { LIMITS } from "../../shared/validate.ts";
 import type { TableMap } from "../../shared/types.ts";
 import type { Controller } from "../controller.ts";
@@ -20,6 +21,7 @@ export function MapsPanel({ app, state }: Props) {
   const table = state.table;
   if (!table) return null;
   const active = currentMap(state);
+  const startId = defaultMapId(table);
   const players = knownPlayers(state);
 
   const create = (e: Event) => {
@@ -35,16 +37,19 @@ export function MapsPanel({ app, state }: Props) {
     <section class="panel maps-panel" data-testid="maps-panel">
       <h2>Maps</h2>
       <ul class="map-list">
-        {table.maps.map((m, i) => (
-          <li key={m.id} class={m.id === active?.id ? "is-active" : ""} data-map-id={m.id}>
+        {table.maps.map((m) => (
+          <li key={m.id} class={`${m.id === active?.id ? "is-active" : ""} ${m.id === startId ? "is-default" : ""}`} data-map-id={m.id}>
             <button
               type="button"
-              class="map-view"
-              title={i === 0 ? "Look at this map (new players start here)" : "Look at this map (players stay where they are)"}
-              onClick={() => app.viewMap(m.id)}
+              class="map-default icon"
+              title={m.id === startId ? "Players start on this map" : "Make this the map where players start"}
+              aria-pressed={m.id === startId}
+              onClick={() => m.id !== startId && app.send({ type: "map.setDefault", mapId: m.id })}
             >
+              {m.id === startId ? "★" : "☆"}
+            </button>
+            <button type="button" class="map-view" title="Look at this map (players stay where they are)" onClick={() => app.viewMap(m.id)}>
               {m.name}
-              {i === 0 && <span class="map-first" title="New players start on the first map"> ★</span>}
             </button>
             <span class="map-player-count" title={players.filter((p) => p.mapId === m.id).map((p) => p.name).join(", ")}>
               {players.filter((p) => p.mapId === m.id).length || ""}

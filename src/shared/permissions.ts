@@ -20,13 +20,19 @@ export function playerKey(name: string): string {
 }
 
 /**
- * The map a player sees: the one the owner sent them to, or the first map.
- * null when there is no map at all.
+ * The map where players start: the one the owner chose, or the first map if
+ * none was chosen (or it was deleted). null when there is no map at all.
  */
+export function defaultMapId(state: Pick<TableState, "maps" | "defaultMapId">): string | null {
+  if (state.defaultMapId && state.maps.some((m) => m.id === state.defaultMapId)) return state.defaultMapId;
+  return state.maps[0]?.id ?? null;
+}
+
+/** The map a player sees: the one the owner sent them to, or the default map. */
 export function playerMapId(state: TableState, name: string): string | null {
   const assigned = state.playerMaps[playerKey(name)];
   if (assigned && state.maps.some((m) => m.id === assigned.mapId)) return assigned.mapId;
-  return state.maps[0]?.id ?? null;
+  return defaultMapId(state);
 }
 
 type Who = Pick<User, "name" | "role">;
@@ -83,5 +89,6 @@ export function viewFor(state: TableState, user: Who): TableState {
     tokens: state.tokens.filter((t) => t.mapId === map?.id).map((t) => (canControl(user, t) ? t : redactToken(t))),
     templates: [],
     playerMaps: {},
+    defaultMapId: null,
   };
 }

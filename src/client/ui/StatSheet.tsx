@@ -38,9 +38,14 @@ export function StatSheet({ app, state, selection }: Props) {
   // Tokens follow their map's default size; templates follow the map being viewed.
   const mapId = selection.kind === "token" ? (item as Token).mapId : currentMap(state)?.id;
   const defaultSize = table?.maps.find((m) => m.id === mapId)?.grid.defaultTokenSize ?? 1;
-  // A token of a unique template: its edits also update the template (owner sees which one).
-  const uniqueTemplate =
-    selection.kind === "token" ? table?.templates.find((t) => t.id === (item as Token).templateId && t.unique) : undefined;
+  // A unique template and its tokens are linked (the owner sees which template).
+  const linkedTemplate =
+    selection.kind === "token"
+      ? table?.templates.find((t) => t.id === (item as Token).templateId && t.unique)
+      : (item as TokenTemplate).unique
+        ? (item as TokenTemplate)
+        : undefined;
+  const linkedTokens = linkedTemplate ? (table?.tokens.filter((t) => t.templateId === linkedTemplate.id).length ?? 0) : 0;
 
   return (
     <aside class="panel stat-sheet" data-testid="stat-sheet" data-kind={selection.kind} key={`${selection.kind}-${item.id}`}>
@@ -52,19 +57,21 @@ export function StatSheet({ app, state, selection }: Props) {
       </header>
 
       {selection.kind === "template" && (
-        <label class="field field-check unique-toggle" title="Editing any token placed from this template also changes the template">
+        <label class="field field-check unique-toggle" title="The template and all its tokens share every change (positions excepted)">
           <input
             type="checkbox"
             name="unique"
             checked={(item as TokenTemplate).unique}
             onChange={(e) => app.send({ type: "template.update", templateId: item.id, changes: { unique: (e.currentTarget as HTMLInputElement).checked } })}
           />
-          <span>Unique (edits to its tokens also update this template)</span>
+          <span>Unique (this template and all its tokens are linked)</span>
         </label>
       )}
-      {uniqueTemplate && (
+      {linkedTemplate && (
         <p class="hint unique-hint" data-testid="unique-hint">
-          Unique: your edits also update the template “{uniqueTemplate.stats.name}”.
+          {selection.kind === "token"
+            ? `Unique “${linkedTemplate.stats.name}”: edits also apply to the template and its ${linkedTokens - 1} other token(s).`
+            : `Edits also apply to its ${linkedTokens} placed token(s), on every map.`}
         </p>
       )}
 

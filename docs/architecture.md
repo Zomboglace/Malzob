@@ -151,15 +151,21 @@ The data directory is configurable with `DATA_DIR` and ignored by git.
 There is no single "active map". The owner's client shows whichever map the
 owner clicks (local state `viewMapId`). Each player sees one map:
 `TableState.playerMaps[playerKey(name)]` if the owner sent them somewhere,
-otherwise the first map of the list (`playerMapId()`). Assignments are keyed
+otherwise the default map (`TableState.defaultMapId`, or the first map of the
+list if none was chosen or it was deleted; `defaultMapId()`, `playerMapId()`).
+Assignments are keyed
 by display name and stored, so they survive reconnections and restarts.
 
 ## Unique templates
 
-A template with `unique: true` stands for a single character: every
-`token.update` on a token placed from it applies the same changes to the
-template too (in the reducer), so placing it again, or on another map,
-starts from its latest state. Template edits still never change tokens.
+A template with `unique: true` stands for a single character, which may be
+placed on several maps at once: the template and all the tokens placed from
+it are linked. A `token.update` on one of them applies the same changes to
+the template and to every other linked token; a `template.update` applies to
+all its tokens (`updateLinkedTokens()` in the reducer). Positions are not
+shared, and sizes are re-clamped on each token's map. Ticking "unique" alone
+does not overwrite existing tokens: they share the changes made from then on.
+Templates that are not unique never change placed tokens, and vice versa.
 
 ## Roles, login and permissions
 

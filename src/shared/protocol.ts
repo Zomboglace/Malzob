@@ -23,8 +23,9 @@ export interface RulerLine {
  * 4: shared ruler.
  * 5: owner login and roles, token control, per-user state, upload tokens.
  * 6: per-player maps (player.setMap replaces map.activate), unique templates.
+ * 7: map.setDefault; unique templates link all their tokens.
  */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 export const WS_PATH = "/ws";
 
 /** Appearance fields shared by token and template updates. */
@@ -57,8 +58,10 @@ export type ClientMessage =
   | { type: "map.create"; name: string }
   | { type: "map.rename"; mapId: string; name: string }
   | { type: "map.delete"; mapId: string }
-  /** Send one player (by display name) to a map. Players start on the first map. */
+  /** Send one player (by display name) to a map. Players start on the default map. */
   | { type: "player.setMap"; player: string; mapId: string }
+  /** Choose the map where players start (the first map until one is chosen). */
+  | { type: "map.setDefault"; mapId: string }
   | { type: "map.setBackground"; mapId: string; image: string | null }
   | { type: "map.setGrid"; mapId: string; grid: Partial<GridSettings> }
   // Tokens

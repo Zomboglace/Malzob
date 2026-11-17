@@ -10,7 +10,8 @@ very few dependencies, and tests for every feature.
 ## Features
 
 - **Maps**: several maps; the owner looks at any of them, and sends each
-  player to a map individually (players start on the first map); a background image
+  player to a map individually (players start on the default map, chosen
+  with ★); a background image
   per map (PNG, JPEG or WebP, up to 15 MiB, stored on the server by content hash).
 - **Grid**: cell width/height (non-square allowed) and X/Y offset with
   sub-pixel precision to align with the image, or **set it by marking two
@@ -27,9 +28,10 @@ very few dependencies, and tests for every feature.
 - **Ping**: show everyone a spot with an expanding, fading circle.
 - **Templates** ("monster/character models"): a library of templates with a
   stat sheet. Placing a template creates a token with its own copy of the stats.
-  Editing a token never changes its template (unless the template is marked
-  **unique**: then edits to its tokens also update it, handy for named
-  characters); editing a template never changes tokens already placed.
+  Editing a token never changes its template, and editing a template never
+  changes tokens already placed, unless the template is marked **unique**:
+  then the template and all its tokens, on every map, are linked and share
+  every change (positions excepted). Handy for named characters.
 - **D&D 5e stat sheet** for tokens and templates: AC, HP (current/max/temp),
   speed, the six abilities with automatic modifiers, proficiency and initiative
   bonuses, conditions, notes. Edits sync live.
@@ -132,7 +134,7 @@ afterwards for non-square cells.
 |---|---|---|
 | joins with | the owner username **and** password | any other name, no password |
 | sidebar (maps, grid, templates) | yes | no |
-| which map is shown | looks at any map (click it in the list), without moving the players | starts on the first map; then sees the map the owner sent them to |
+| which map is shown | looks at any map (click it in the list), without moving the players | starts on the default map; then sees the map the owner sent them to |
 | ruler, ping | yes | yes |
 | tokens | everything | moves and edits the tokens given to them; cannot create, delete, duplicate them or save them as templates |
 | HP and stat sheets | all tokens | only the tokens they control |
@@ -140,7 +142,9 @@ afterwards for non-square cells.
 To move players between maps, use the **Players** panel in the sidebar
 (one map per player; players who are offline keep their map for when they
 come back), or **Bring all players here** to send everyone to the map you are
-looking at. The first map in the list (★) is where new players start.
+looking at. New players start on the default map, marked ★ in the map list:
+click the ☆ of another map to make it the default. If the default map is
+deleted, the first map of the list becomes the default.
 
 To give a token to players, open its sheet (or a template's sheet, so that
 every token placed from it is given too) and use **Who can use it**: click a

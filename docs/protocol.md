@@ -1,6 +1,6 @@
 # WebSocket protocol
 
-Version: **6** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
+Version: **7** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
 source of truth for the types below).
 
 - Endpoint: `ws://<host>:<port>/ws` (`wss://` behind HTTPS).
@@ -40,6 +40,9 @@ Changes in version 6: there is no single active map any more:
 `map.activate` and `TableState.activeMapId` are replaced by
 `player.setMap` and `TableState.playerMaps` (each player sees the map they
 were sent to, or the first map). Templates have `unique`.
+
+Changes in version 7: `map.setDefault` and `TableState.defaultMapId` (where
+players start); all tokens of a unique template are linked to each other.
 
 ## Roles
 
@@ -106,7 +109,7 @@ renamed player then receives their new view of the state.
 
 #### `map.create`
 Create a map (20×15 cells of 70 px until a background is set), at the end of
-the list. Players who were not sent to a map see the first map of the list.
+the list. Players who were not sent to a map see the default map.
 ```json
 { "type": "map.create", "name": "Goblin cave" }
 ```
@@ -118,18 +121,27 @@ the list. Players who were not sent to a map see the first map of the list.
 
 #### `map.delete`
 Deletes the map **and all its tokens**. Players who were on it go back to the
-first map.
+default map; if it was the default map, the first map of the list becomes the
+default again.
 ```json
 { "type": "map.delete", "mapId": "8c1f…" }
 ```
 
 #### `player.setMap`
 Owner only. Send one player, by display name (case-insensitive), to a map.
-Players who were never sent anywhere see the first map. The assignment is
+Players who were never sent anywhere see the default map. The assignment is
 stored (`TableState.playerMaps`), so it survives reconnections and restarts,
 and works for players who are not connected.
 ```json
 { "type": "player.setMap", "player": "Jane Doe", "mapId": "8c1f…" }
+```
+
+#### `map.setDefault`
+Owner only. Choose the map where players start (players who were never sent
+to a map see it). Until one is chosen, or after it is deleted, it is the first
+map of the list. Players do not receive `defaultMapId`.
+```json
+{ "type": "map.setDefault", "mapId": "8c1f…" }
 ```
 
 #### `map.setBackground`
@@ -232,9 +244,12 @@ appearance (`fromTokenId`). `name` becomes the template's `stats.name`.
 ```
 
 #### `template.update`
-Same `changes` as `token.update`, plus `unique` (boolean). Never affects
-tokens already placed. When a template is unique, every `token.update` on a
-token placed from it applies the same `changes` to the template as well.
+Same `changes` as `token.update`, plus `unique` (boolean). A template that
+is not unique never affects tokens already placed. A unique template and all
+the tokens placed from it are linked: a `template.update` applies the same
+`changes` to all its tokens, and a `token.update` on one of its tokens applies
+them to the template and to all its other tokens (positions are never
+shared). Setting `unique` alone changes no token.
 ```json
 { "type": "template.update", "templateId": "b02e…", "changes": { "size": 2, "stats": { "ac": 15, "hp": { "current": 7, "max": 7 } } } }
 { "type": "template.update", "templateId": "b02e…", "changes": { "unique": true } }
@@ -281,7 +296,7 @@ open). The owner also gets `session`, to reconnect without the password
   "type": "welcome",
   "protocol": 5,
   "you": { "id": "5d0c…", "name": "Game Master", "role": "owner" },
-  "state": { "rev": 12, "maps": [], "tokens": [], "templates": [], "playerMaps": {} },
+  "state": { "rev": 12, "maps": [], "tokens": [], "templates": [], "playerMaps": {}, "defaultMapId": null },
   "users": [{ "id": "5d0c…", "name": "Game Master", "role": "owner" }, { "id": "77aa…", "name": "John Doe", "role": "player" }],
   "uploadToken": "Zt9q…",
   "session": "1765432100000.k3Jv…"
@@ -337,7 +352,8 @@ patches instead; `rev` makes that possible without changing the model.)
       }
     ],
     "templates": [],
-    "playerMaps": { "jane doe": { "name": "Jane Doe", "mapId": "8c1f…" } }
+    "playerMaps": { "jane doe": { "name": "Jane Doe", "mapId": "8c1f…" } },
+    "defaultMapId": "8c1f…"
   }
 }
 ```

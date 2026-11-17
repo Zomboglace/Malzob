@@ -227,9 +227,19 @@ describe("server: players", () => {
     const { client: back, welcome: w2 } = await TestClient.join(server2, "jane doe");
     assert.deepEqual(w2.state.maps.map((m) => m.name), ["Dungeon"]);
 
-    // Players cannot move themselves.
+    // Players cannot move themselves, nor change the default map.
     back.send({ type: "player.setMap", player: "jane doe", mapId: s.maps[0]!.id });
     assert.equal((await back.next("error")).code, "forbidden");
+    back.send({ type: "map.setDefault", mapId: dungeon });
+    assert.equal((await back.next("error")).code, "forbidden");
+
+    // New players start on the default map chosen by the owner.
+    const { client: gm2 } = await TestClient.joinOwner(server2);
+    await gm2.apply({ type: "map.setDefault", mapId: dungeon });
+    const { client: newcomer, welcome: w3 } = await TestClient.join(server2, "New Player");
+    assert.deepEqual(w3.state.maps.map((m) => m.name), ["Dungeon"]);
+    await newcomer.close();
+    await gm2.close();
     await back.close();
     await server2.close();
   });

@@ -62,7 +62,7 @@ describe("UI: map rendering", () => {
   });
 
   test("an empty table invites to create a map", () => {
-    ui = mount({ table: { rev: 0, maps: [], tokens: [], templates: [], playerMaps: {} } });
+    ui = mount({ table: { rev: 0, maps: [], tokens: [], templates: [], playerMaps: {}, defaultMapId: null } });
     assert.match(ui.$(".empty").textContent ?? "", /No map yet/);
   });
 });

@@ -123,8 +123,9 @@ export interface TokenTemplate {
   /** Copied to tokens placed from this template. */
   control: TokenControl;
   /**
-   * A unique character or monster: editing any token placed from this
-   * template also applies the same changes to the template.
+   * A unique character or monster: the template and every token placed from
+   * it are linked; editing any of them applies the same changes to all of
+   * them (positions excepted).
    */
   unique: boolean;
 }
@@ -142,9 +143,11 @@ export interface TableState {
   rev: number;
   /**
    * Which map each player sees, keyed by normalised player name (see
-   * `playerKey()`). Players not listed see the first map.
+   * `playerKey()`). Players not listed see the default map.
    */
   playerMaps: Record<string, PlayerMap>;
+  /** Where players start (see `defaultMapId()`); null = the first map. */
+  defaultMapId: string | null;
   maps: TableMap[];
   tokens: Token[];
   templates: TokenTemplate[];

@@ -122,7 +122,7 @@ describe("UI: what a player sees and can do", () => {
   });
 
   test("with no map shown, the player is told to wait for the game master", () => {
-    ui = mountPlayer({ table: { rev: 1, maps: [], tokens: [], templates: [], playerMaps: {} } });
+    ui = mountPlayer({ table: { rev: 1, maps: [], tokens: [], templates: [], playerMaps: {}, defaultMapId: null } });
     assert.match(ui.$(".empty").textContent ?? "", /game master/);
   });
 });
