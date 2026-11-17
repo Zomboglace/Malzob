@@ -79,6 +79,8 @@ describe("server: invalid messages are rejected", () => {
     const big = await TestClient.connect(server);
     const closed = new Promise<number>((resolve) => big.socket.once("close", (code) => resolve(code)));
     big.sendRaw(JSON.stringify({ type: "hello", name: "x".repeat(300 * 1024) }));
-    assert.equal(await closed, 1009);
+    assert.equal(await closed, 1009, `close code (socket errors: ${big.errors.map((e) => e.message).join(", ") || "none"})`);
+    // The server is unaffected and still serves the other clients.
+    assert.equal(server.table.users().length, 2);
   });
 });

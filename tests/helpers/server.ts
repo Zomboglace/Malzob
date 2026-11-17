@@ -25,10 +25,13 @@ type Msg<T extends ServerMessage["type"]> = Extract<ServerMessage, { type: T }>;
 /** A WebSocket client that records every message and lets tests await them. */
 export class TestClient {
   readonly messages: ServerMessage[] = [];
+  /** Socket-level errors (e.g. ECONNRESET); recorded so they never crash the test run. */
+  readonly errors: Error[] = [];
   private cursor = 0;
   private waiters: Array<() => void> = [];
 
   private constructor(readonly socket: WebSocket) {
+    socket.on("error", (err) => this.errors.push(err));
     socket.on("message", (data) => {
       this.messages.push(JSON.parse(data.toString()) as ServerMessage);
       for (const w of this.waiters.splice(0)) w();

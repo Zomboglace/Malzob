@@ -47,7 +47,13 @@ export class Table {
       this.clients.delete(socket);
       if (client?.user) this.broadcastUsers();
     });
-    socket.on("error", () => socket.terminate());
+    // `ws` has already started a clean close (e.g. code 1009 for an oversized
+    // frame) when it emits "error". Do not terminate() here: destroying the
+    // TCP socket while the peer is still sending makes some systems (Windows)
+    // reset the connection, and the client never sees the close code.
+    socket.on("error", (err) => {
+      if (process.env.MALZOB_DEBUG) console.warn("[malzob] socket error:", err.message);
+    });
   }
 
   /** Handles one raw text frame from a client. */
