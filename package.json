@@ -13,7 +13,10 @@
     "start": "node scripts/build.mjs && node build/server/main.js",
     "reset": "node scripts/build.mjs && node build/server/main.js --reset-owner",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node scripts/test.mjs"
+    "test": "node scripts/test.mjs",
+    "test:walls": "node scripts/test.mjs tests/upcoming/1-walls",
+    "test:light": "node scripts/test.mjs tests/upcoming/2-light",
+    "test:vision": "node scripts/test.mjs tests/upcoming/3-vision"
   },
   "dependencies": {
     "preact": "10.29.8",

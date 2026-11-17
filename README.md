@@ -170,6 +170,19 @@ Tests are headless: server tests start a real server on a free port in a
 temporary directory and connect real WebSocket clients; UI tests render the
 real Preact components in [happy-dom](https://github.com/capricorn86/happy-dom).
 
+### Upcoming features
+
+The tests of features that are specified but not implemented yet live in
+`tests/upcoming/`; `npm test` and `npm run typecheck` skip them. Each part has
+a spec and one command that type-checks and runs its tests, to be done in
+this order:
+
+| part | spec | command |
+|---|---|---|
+| 1. Walls and doors (movement blocking) | [docs/spec-1-walls.md](docs/spec-1-walls.md) | `npm run test:walls` |
+| 2. Light (map light, painted areas, token lights) | [docs/spec-2-light.md](docs/spec-2-light.md) | `npm run test:light` |
+| 3. Vision and fog of war (what players see and receive) | [docs/spec-3-vision.md](docs/spec-3-vision.md) | `npm run test:vision` |
+
 ## Project structure
 
 ```
@@ -184,6 +197,7 @@ tests/
   server/    HTTP, sync between two clients, validation, persistence
   client/    UI (happy-dom), connection and reconnection, view maths
   helpers/   test server, WebSocket test client, DOM setup, fake images
+  upcoming/  tests of features not implemented yet (one folder per part, see below)
 scripts/     build.mjs (esbuild) and test.mjs (test runner)
 docs/        architecture.md and protocol.md
 ```
@@ -217,6 +231,8 @@ restricted environments.
 
 - [docs/architecture.md](docs/architecture.md): layers, data flow, persistence, where future features plug in
 - [docs/protocol.md](docs/protocol.md): every WebSocket message, with an example, and the HTTP routes
+- [docs/spec-1-walls.md](docs/spec-1-walls.md), [docs/spec-2-light.md](docs/spec-2-light.md),
+  [docs/spec-3-vision.md](docs/spec-3-vision.md): specs of the upcoming features (see *Upcoming features*)
 
 ## License
 
