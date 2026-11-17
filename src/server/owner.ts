@@ -108,28 +108,3 @@ export class OwnerStore {
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   }
 }
-
-/** Counts failed logins per address; blocks an address after too many in a window. */
-export class LoginLimiter {
-  private readonly failures = new Map<string, { count: number; resetAt: number }>();
-
-  constructor(
-    private readonly maxFailures = 5,
-    private readonly windowMs = 60_000,
-  ) {}
-
-  isBlocked(address: string, now = Date.now()): boolean {
-    const entry = this.failures.get(address);
-    return !!entry && entry.resetAt > now && entry.count >= this.maxFailures;
-  }
-
-  fail(address: string, now = Date.now()): void {
-    const entry = this.failures.get(address);
-    if (!entry || entry.resetAt <= now) this.failures.set(address, { count: 1, resetAt: now + this.windowMs });
-    else entry.count++;
-  }
-
-  succeed(address: string): void {
-    this.failures.delete(address);
-  }
-}

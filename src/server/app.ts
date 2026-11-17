@@ -49,7 +49,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     createRequestHandler({ publicDir: options.publicDir, images, isUploadAllowed: (token) => table.isUploadAllowed(token) }),
   );
   const wss = new WebSocketServer({ server: http, path: WS_PATH, maxPayload: MAX_WS_MESSAGE_BYTES });
-  wss.on("connection", (socket, req) => table.connect(socket, req.socket.remoteAddress ?? "unknown"));
+  wss.on("connection", (socket) => table.connect(socket));
 
   await new Promise<void>((resolve, reject) => {
     http.once("error", reject);

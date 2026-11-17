@@ -44,7 +44,7 @@ pure, so it can be tested in isolation and could later run on the client too
 | file        | role |
 |-------------|------|
 | `main.ts`   | entry point for `npm start` / `npm run reset`; reads `PORT`, `HOST`, `DATA_DIR` |
-| `owner.ts`  | `OwnerStore`: the owner account (scrypt hash), signed session tokens; `LoginLimiter` |
+| `owner.ts`  | `OwnerStore`: the owner account (scrypt hash), signed session tokens |
 | `setup.ts`  | asks for the owner credentials in the terminal (or reads them from the environment) |
 | `app.ts`    | `startServer()`: wires HTTP, WebSocket, stores; used by main and tests |
 | `table.ts`  | `Table`: connected clients, login, permission checks, message handling, per-user broadcast |
@@ -152,7 +152,8 @@ The data directory is configurable with `DATA_DIR` and ignored by git.
   the session token returned in a previous `welcome` (HMAC-signed with the
   secret in owner.json, valid 30 days; a reset changes the secret). The
   browser keeps that token in `sessionStorage`, so reloads and reconnections
-  do not need the password again. Failed logins are limited per address.
+  do not need the password again. A wrong password is simply refused
+  (no lockout: this is meant for a small, friendly table).
 - **Players**: no account; identified by display name. Tokens and templates
   have `control: { players, everyone }`; `canControl(user, token)` decides.
 - **Enforcement** is on the server (`checkPermission` before `applyIntent`);

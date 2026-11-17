@@ -82,8 +82,7 @@ Join the table. Must be the first message. Players send a display name (1–80
 characters). The owner sends the owner username with the `password`, or with
 the `session` token from a previous `welcome`. The owner username cannot be
 used without one of them, and a `password` with any other name is refused
-(`auth_failed`). After 5 failed owner logins from one address, owner logins
-from it are refused for a minute.
+(`auth_failed`).
 ```json
 { "type": "hello", "name": "Jane Doe" }
 { "type": "hello", "name": "Game Master", "password": "…" }
@@ -365,7 +364,7 @@ Sent **only** to the client whose message was rejected; the state is unchanged.
 | `not_found` | the map/token/template/image referenced does not exist |
 | `not_ready` | an intent was sent before `hello`                    |
 | `forbidden` | your role does not allow this (see *Roles*)          |
-| `auth_failed` | `hello` refused: wrong password or session, reserved name, too many failed logins; you are not joined |
+| `auth_failed` | `hello` refused: wrong password or session, or reserved name; you are not joined |
 
 ```json
 { "type": "error", "code": "not_found", "message": "token d4a9 not found", "ref": "token.move" }

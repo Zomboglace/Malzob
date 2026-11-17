@@ -143,9 +143,7 @@ when they come back with the same name. The owner's username is reserved:
 nobody can join with it without the password.
 
 The server enforces all of this; players never receive the maps they cannot
-see, the templates, or the stats of tokens they do not control. After 5 wrong
-passwords from the same address, owner logins from it are refused for a
-minute.
+see, the templates, or the stats of tokens they do not control.
 
 ## Test
 

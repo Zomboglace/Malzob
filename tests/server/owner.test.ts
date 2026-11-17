@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { startServer } from "../../src/server/app.ts";
-import { LoginLimiter, OwnerStore, SESSION_TTL_MS } from "../../src/server/owner.ts";
+import { OwnerStore, SESSION_TTL_MS } from "../../src/server/owner.ts";
 import { ensureOwner } from "../../src/server/setup.ts";
 import { makeTempDir, OWNER, PUBLIC_DIR, startTestServer, TestClient } from "../helpers/server.ts";
 
@@ -44,14 +44,6 @@ describe("owner account", () => {
     assert.ok(!store.checkSession("garbage", now));
     store.set("Game Master", "another password");
     assert.ok(!store.checkSession(session, now + 1000), "reset signs everyone out");
-  });
-
-  test("failed logins are limited per address", () => {
-    const limiter = new LoginLimiter(3, 1000);
-    for (let i = 0; i < 3; i++) limiter.fail("1.2.3.4", 0);
-    assert.ok(limiter.isBlocked("1.2.3.4", 10));
-    assert.ok(!limiter.isBlocked("5.6.7.8", 10));
-    assert.ok(!limiter.isBlocked("1.2.3.4", 1001), "the window expires");
   });
 
   test("setup takes credentials from the environment when there is no terminal", async () => {
@@ -146,18 +138,15 @@ describe("server: logging in", () => {
     await server.close();
   });
 
-  test("too many failed logins from one address are blocked for a while", async () => {
+  test("wrong passwords are just refused; there is no lockout", async () => {
     const server = await startTestServer(tmp.dir);
     const c = await TestClient.connect(server);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
       c.send({ type: "hello", name: OWNER.username, password: `wrong ${i}` });
-      await c.next("error");
+      assert.equal((await c.next("error")).code, "auth_failed");
     }
     c.send({ type: "hello", name: OWNER.username, password: OWNER.password });
-    assert.match((await c.next("error")).message, /too many/);
-    // Players are not affected.
-    c.send({ type: "hello", name: "Jane Doe" });
-    assert.equal((await c.next("welcome")).you.role, "player");
+    assert.equal((await c.next("welcome")).you.role, "owner");
     await c.close();
     await server.close();
   });

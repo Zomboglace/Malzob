@@ -13,7 +13,7 @@ import { applyIntent, type ReducerContext } from "../shared/reducer.ts";
 import type { TableState, User } from "../shared/types.ts";
 import { validateClientMessage } from "../shared/validate.ts";
 import type { ImageStore } from "./images.ts";
-import { LoginLimiter, type OwnerStore } from "./owner.ts";
+import type { OwnerStore } from "./owner.ts";
 import type { StateStore } from "./store.ts";
 
 /** Minimum delay between two pings from the same client; faster pings are dropped. */
@@ -21,8 +21,6 @@ export const PING_INTERVAL_MS = 150;
 
 interface Client {
   socket: WebSocket;
-  /** Remote address, used to limit failed logins. */
-  address: string;
   /** null until the client has sent a successful `hello`. */
   user: User | null;
   /** Authorises image uploads (HTTP) while this connection is open. */
@@ -36,7 +34,6 @@ export class Table {
   private state: TableState;
   private readonly clients = new Map<WebSocket, Client>();
   private readonly ctx: ReducerContext;
-  private readonly logins = new LoginLimiter();
 
   constructor(
     private readonly store: StateStore,
@@ -51,10 +48,9 @@ export class Table {
     return this.state;
   }
 
-  connect(socket: WebSocket, address = "unknown"): void {
+  connect(socket: WebSocket): void {
     this.clients.set(socket, {
       socket,
-      address,
       user: null,
       uploadToken: randomBytes(24).toString("base64url"),
       lastPingAt: 0,
@@ -156,18 +152,13 @@ export class Table {
     }
     let session: string | undefined;
     if (wantsOwner) {
-      if (this.logins.isBlocked(client.address)) {
-        return this.sendError(client.socket, "auth_failed", "too many failed logins, wait a minute", "hello");
-      }
       const ok =
         (msg.password !== undefined && this.owner.checkPassword(msg.password)) ||
         (msg.session !== undefined && this.owner.checkSession(msg.session));
       if (!ok) {
-        this.logins.fail(client.address);
         const reason = msg.password === undefined && msg.session === undefined ? "this name is reserved for the owner" : "wrong password";
         return this.sendError(client.socket, "auth_failed", reason, "hello");
       }
-      this.logins.succeed(client.address);
       session = this.owner.issueSession();
     }
 
