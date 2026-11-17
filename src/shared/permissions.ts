@@ -11,7 +11,22 @@ export const NO_CONTROL: TokenControl = { players: [], everyone: false };
 
 /** Display names are compared trimmed and case-insensitively. */
 export function sameName(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
+  return playerKey(a) === playerKey(b);
+}
+
+/** Key of a player in `TableState.playerMaps`. */
+export function playerKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/**
+ * The map a player sees: the one the owner sent them to, or the first map.
+ * null when there is no map at all.
+ */
+export function playerMapId(state: TableState, name: string): string | null {
+  const assigned = state.playerMaps[playerKey(name)];
+  if (assigned && state.maps.some((m) => m.id === assigned.mapId)) return assigned.mapId;
+  return state.maps[0]?.id ?? null;
 }
 
 type Who = Pick<User, "name" | "role">;
@@ -37,7 +52,7 @@ export function checkPermission(user: Who, intent: StateIntent, state: TableStat
     case "token.update": {
       const token = state.tokens.find((t) => t.id === intent.tokenId);
       if (!token) return null;
-      if (token.mapId !== state.activeMapId || !canControl(user, token)) return "you do not control this token";
+      if (token.mapId !== playerMapId(state, user.name) || !canControl(user, token)) return "you do not control this token";
       if (intent.type === "token.update" && intent.changes.control) return "only the owner can change who controls a token";
       return null;
     }
@@ -55,17 +70,18 @@ export function redactToken(token: Token): Token {
 
 /**
  * The part of the state a user may see. The owner sees everything; a player
- * sees only the active map and its tokens, with the stats of the tokens they
- * do not control hidden, and no templates.
+ * sees only their map and its tokens, with the stats of the tokens they do
+ * not control hidden, no templates, and no other player's map assignment.
  */
 export function viewFor(state: TableState, user: Who): TableState {
   if (user.role === "owner") return state;
-  const map = state.maps.find((m) => m.id === state.activeMapId);
+  const mapId = playerMapId(state, user.name);
+  const map = state.maps.find((m) => m.id === mapId);
   return {
     rev: state.rev,
-    activeMapId: map ? map.id : null,
     maps: map ? [map] : [],
     tokens: state.tokens.filter((t) => t.mapId === map?.id).map((t) => (canControl(user, t) ? t : redactToken(t))),
     templates: [],
+    playerMaps: {},
   };
 }

@@ -1,12 +1,12 @@
 /** The template library ("monster / character models") and the blank-token tool. */
 import { LIMITS } from "../../shared/validate.ts";
 import type { Controller } from "../controller.ts";
-import type { ClientState } from "../store.ts";
+import { type ClientState, currentMap } from "../store.ts";
 
 export function TemplatesPanel({ app, state }: { app: Controller; state: ClientState }) {
   const table = state.table;
   if (!table) return null;
-  const hasMap = table.activeMapId !== null;
+  const hasMap = currentMap(state) !== null;
   const placingId = state.placing && "templateId" in state.placing ? state.placing.templateId : null;
   const placingBlank = !!state.placing && "blank" in state.placing;
 
@@ -36,6 +36,7 @@ export function TemplatesPanel({ app, state }: { app: Controller; state: ClientS
             <span class="swatch" style={{ background: t.color }} />
             <button type="button" class="template-open" title="Edit template" onClick={() => app.select({ kind: "template", id: t.id })}>
               {t.stats.name}
+              {t.unique && <span class="unique-mark" title="Unique: edits to its tokens also update it"> ◆</span>}
             </button>
             <button
               type="button"

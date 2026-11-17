@@ -1,6 +1,6 @@
 # WebSocket protocol
 
-Version: **5** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
+Version: **6** (`PROTOCOL_VERSION` in `src/shared/protocol.ts`, which is the
 source of truth for the types below).
 
 - Endpoint: `ws://<host>:<port>/ws` (`wss://` behind HTTPS).
@@ -36,18 +36,23 @@ roles (`User.role`), token and template `control`, per-user `state` (players
 see only part of it), `welcome.uploadToken` (required to upload images),
 `welcome.session`, error codes `forbidden` and `auth_failed`.
 
+Changes in version 6: there is no single active map any more:
+`map.activate` and `TableState.activeMapId` are replaced by
+`player.setMap` and `TableState.playerMaps` (each player sees the map they
+were sent to, or the first map). Templates have `unique`.
+
 ## Roles
 
 - The **owner** (game master) joins with the owner username and the password
   (or a session token). The owner may send every message.
 - Everyone else is a **player**: they may send `user.rename`, `ping`,
   `ruler`, and `token.move` / `token.update` for tokens they control on the
-  active map (not `changes.control`). Any other intent is refused with
+  map they see (not `changes.control`). Any other intent is refused with
   `forbidden`.
 - A player controls a token if its `control.everyone` is true or its
   `control.players` contains their display name (case-insensitive).
-- What a player receives in `welcome` and `state` is filtered: only the
-  active map, its tokens (with `redacted: true` and blanked `stats` for the
+- What a player receives in `welcome` and `state` is filtered: only their
+  map (see `player.setMap`), its tokens (with `redacted: true` and blanked `stats` for the
   tokens they do not control — only `stats.name` is real), and no templates.
 
 ## Session flow
@@ -100,8 +105,8 @@ renamed player then receives their new view of the state.
 ### Maps
 
 #### `map.create`
-Create a map (20×15 cells of 70 px until a background is set). The first map
-created becomes the active one.
+Create a map (20×15 cells of 70 px until a background is set), at the end of
+the list. Players who were not sent to a map see the first map of the list.
 ```json
 { "type": "map.create", "name": "Goblin cave" }
 ```
@@ -112,16 +117,19 @@ created becomes the active one.
 ```
 
 #### `map.delete`
-Deletes the map **and all its tokens**. If it was active, the first remaining
-map (or none) becomes active.
+Deletes the map **and all its tokens**. Players who were on it go back to the
+first map.
 ```json
 { "type": "map.delete", "mapId": "8c1f…" }
 ```
 
-#### `map.activate`
-Show this map to everyone.
+#### `player.setMap`
+Owner only. Send one player, by display name (case-insensitive), to a map.
+Players who were never sent anywhere see the first map. The assignment is
+stored (`TableState.playerMaps`), so it survives reconnections and restarts,
+and works for players who are not connected.
 ```json
-{ "type": "map.activate", "mapId": "8c1f…" }
+{ "type": "player.setMap", "player": "Jane Doe", "mapId": "8c1f…" }
 ```
 
 #### `map.setBackground`
@@ -224,9 +232,12 @@ appearance (`fromTokenId`). `name` becomes the template's `stats.name`.
 ```
 
 #### `template.update`
-Same `changes` as `token.update`. Never affects tokens already placed.
+Same `changes` as `token.update`, plus `unique` (boolean). Never affects
+tokens already placed. When a template is unique, every `token.update` on a
+token placed from it applies the same `changes` to the template as well.
 ```json
 { "type": "template.update", "templateId": "b02e…", "changes": { "size": 2, "stats": { "ac": 15, "hp": { "current": 7, "max": 7 } } } }
+{ "type": "template.update", "templateId": "b02e…", "changes": { "unique": true } }
 ```
 
 #### `template.delete`
@@ -270,7 +281,7 @@ open). The owner also gets `session`, to reconnect without the password
   "type": "welcome",
   "protocol": 5,
   "you": { "id": "5d0c…", "name": "Game Master", "role": "owner" },
-  "state": { "rev": 12, "activeMapId": "8c1f…", "maps": [], "tokens": [], "templates": [] },
+  "state": { "rev": 12, "maps": [], "tokens": [], "templates": [], "playerMaps": {} },
   "users": [{ "id": "5d0c…", "name": "Game Master", "role": "owner" }, { "id": "77aa…", "name": "John Doe", "role": "player" }],
   "uploadToken": "Zt9q…",
   "session": "1765432100000.k3Jv…"
@@ -287,7 +298,6 @@ patches instead; `rev` makes that possible without changing the model.)
   "type": "state",
   "state": {
     "rev": 13,
-    "activeMapId": "8c1f…",
     "maps": [
       {
         "id": "8c1f…",
@@ -326,7 +336,8 @@ patches instead; `rev` makes that possible without changing the model.)
         }
       }
     ],
-    "templates": []
+    "templates": [],
+    "playerMaps": { "jane doe": { "name": "Jane Doe", "mapId": "8c1f…" } }
   }
 }
 ```

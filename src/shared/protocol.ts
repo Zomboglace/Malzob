@@ -22,8 +22,9 @@ export interface RulerLine {
  *    fractional token sizes, ping.
  * 4: shared ruler.
  * 5: owner login and roles, token control, per-user state, upload tokens.
+ * 6: per-player maps (player.setMap replaces map.activate), unique templates.
  */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const WS_PATH = "/ws";
 
 /** Appearance fields shared by token and template updates. */
@@ -36,6 +37,11 @@ export interface AppearancePatch {
   stats?: StatsPatch;
   /** Who besides the owner may use the token (owner only). */
   control?: Partial<TokenControl>;
+}
+
+/** Template changes: the appearance fields, plus the "unique" flag. */
+export interface TemplatePatch extends AppearancePatch {
+  unique?: boolean;
 }
 
 export type ClientMessage =
@@ -51,7 +57,8 @@ export type ClientMessage =
   | { type: "map.create"; name: string }
   | { type: "map.rename"; mapId: string; name: string }
   | { type: "map.delete"; mapId: string }
-  | { type: "map.activate"; mapId: string }
+  /** Send one player (by display name) to a map. Players start on the first map. */
+  | { type: "player.setMap"; player: string; mapId: string }
   | { type: "map.setBackground"; mapId: string; image: string | null }
   | { type: "map.setGrid"; mapId: string; grid: Partial<GridSettings> }
   // Tokens
@@ -69,7 +76,7 @@ export type ClientMessage =
   | { type: "token.delete"; tokenId: string }
   // Templates
   | { type: "template.create"; name: string; fromTokenId?: string }
-  | { type: "template.update"; templateId: string; changes: AppearancePatch }
+  | { type: "template.update"; templateId: string; changes: TemplatePatch }
   | { type: "template.delete"; templateId: string }
   // Ephemeral (not stored): point at a spot of a map, in map pixels.
   | { type: "ping"; mapId: string; x: number; y: number }

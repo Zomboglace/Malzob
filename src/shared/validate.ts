@@ -4,7 +4,7 @@
  * reaches the state reducer. Reference checks (does this map exist?) are done
  * later, by the reducer.
  */
-import type { AppearancePatch, ClientMessage, RulerLine } from "./protocol.ts";
+import type { AppearancePatch, ClientMessage, RulerLine, TemplatePatch } from "./protocol.ts";
 import { isCondition, type StatsPatch } from "./stats.ts";
 import { ABILITIES, type GridSettings } from "./types.ts";
 
@@ -139,10 +139,14 @@ function statsPatch(value: unknown, path: string): StatsPatch {
   return out as StatsPatch;
 }
 
-function appearancePatch(value: unknown, path: string): AppearancePatch {
+function appearancePatch(value: unknown, path: string, template = false): TemplatePatch {
   const o = obj(value, path);
-  onlyKeys(o, ["size", "color", "image", "stats", "control"], path);
+  onlyKeys(o, ["size", "color", "image", "stats", "control", ...(template ? ["unique"] : [])], path);
   const out: Obj = {};
+  opt(o, out, "unique", () => {
+    if (typeof o.unique !== "boolean") fail(`${path}.unique must be a boolean`);
+    return o.unique;
+  });
   opt(o, out, "size", () => (o.size === null ? null : num(o, "size", LIMITS.tokenSize, path)));
   opt(o, out, "color", () => color(o, "color", path));
   opt(o, out, "image", () => imageHash(o, "image", path));
@@ -245,9 +249,11 @@ function validate(value: unknown): ClientMessage {
       keys("mapId", "name");
       return { type, mapId: id(m, "mapId", p), name: name(m, "name", p) };
     case "map.delete":
-    case "map.activate":
       keys("mapId");
       return { type, mapId: id(m, "mapId", p) };
+    case "player.setMap":
+      keys("player", "mapId");
+      return { type, player: name(m, "player", p), mapId: id(m, "mapId", p) };
     case "map.setBackground":
       keys("mapId", "image");
       return { type, mapId: id(m, "mapId", p), image: imageHash(m, "image", p) };
@@ -278,7 +284,7 @@ function validate(value: unknown): ClientMessage {
     }
     case "template.update":
       keys("templateId", "changes");
-      return { type, templateId: id(m, "templateId", p), changes: appearancePatch(m.changes, `${p}.changes`) };
+      return { type, templateId: id(m, "templateId", p), changes: appearancePatch(m.changes, `${p}.changes`, true) };
     case "template.delete":
       keys("templateId");
       return { type, templateId: id(m, "templateId", p) };

@@ -53,7 +53,7 @@ describe("permissions", () => {
       { type: "template.create", name: "Mine", fromTokenId: "tok1" },
       { type: "template.update", templateId: "tpl1", changes: { size: 2 } },
       { type: "token.create", mapId: "map1", col: 0, row: 0 },
-      { type: "map.activate", mapId: "map2" },
+      { type: "player.setMap", player: "John Doe", mapId: "map2" },
       { type: "map.setGrid", mapId: "map1", grid: { visible: false } },
       { type: "map.create", name: "Mine" },
     ] as StateIntent[]) {
@@ -75,7 +75,8 @@ describe("permissions", () => {
     assert.equal(view.tokens[1]!.stats.notes, "");
     assert.equal(view.tokens[2]!.redacted, undefined, "'any player' tokens are fully visible");
     assert.equal(viewFor(t, owner), t);
-    assert.deepEqual(viewFor({ ...t, activeMapId: null }, john).maps, []);
+    assert.deepEqual(viewFor({ ...t, maps: [], tokens: [] }, john).maps, []);
+    assert.deepEqual(view.playerMaps, {});
   });
 
   test("redaction keeps position and look, hides the sheet and the control list", () => {

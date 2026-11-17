@@ -62,7 +62,7 @@ describe("UI: map rendering", () => {
   });
 
   test("an empty table invites to create a map", () => {
-    ui = mount({ table: { rev: 0, activeMapId: null, maps: [], tokens: [], templates: [] } });
+    ui = mount({ table: { rev: 0, maps: [], tokens: [], templates: [], playerMaps: {} } });
     assert.match(ui.$(".empty").textContent ?? "", /No map yet/);
   });
 });
@@ -227,14 +227,13 @@ describe("UI: maps and templates panels", () => {
     const panel = ui.$("[data-testid=maps-panel]");
     (panel.querySelector("input[name=mapName]") as HTMLInputElement).value = "Forest";
     panel.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    (panel.querySelector('[data-map-id="map1"] .map-activate') as HTMLElement).click();
+    (panel.querySelector('[data-map-id="map1"] .map-view') as HTMLElement).click();
     changeValue(panel.querySelector("input[name=cellWidth]") as HTMLInputElement, "64");
     changeValue(panel.querySelector("input[name=activeMapName]") as HTMLInputElement, "Big cave");
     (panel.querySelector("input[name=gridVisible]") as HTMLInputElement).click();
     (panel.querySelector('[data-map-id="map1"] .map-delete') as HTMLElement).click();
     assert.deepEqual(ui.sent, [
       { type: "map.create", name: "Forest" },
-      { type: "map.activate", mapId: "map1" },
       { type: "map.setGrid", mapId: "map1", grid: { cellWidth: 64, cellHeight: 64 } },
       { type: "map.rename", mapId: "map1", name: "Big cave" },
       { type: "map.setGrid", mapId: "map1", grid: { visible: false } },

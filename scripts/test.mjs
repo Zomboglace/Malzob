@@ -44,7 +44,10 @@ await build({
 });
 
 const files = entries.map((e) => join(outdir, relative(join(root, "tests"), e)).replace(/\.tsx?$/, ".mjs"));
-const result = spawnSync(process.execPath, ["--enable-source-maps", "--test", ...process.argv.slice(2), ...files], {
+// A failing server test may leave a socket open: --test-force-exit ends the run
+// anyway, and --test-timeout fails a stuck test instead of waiting forever.
+const runner = ["--enable-source-maps", "--test", "--test-force-exit", "--test-timeout=30000"];
+const result = spawnSync(process.execPath, [...runner, ...process.argv.slice(2), ...files], {
   stdio: "inherit",
   cwd: root,
 });

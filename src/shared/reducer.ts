@@ -7,7 +7,7 @@
  */
 import { clampToGrid, defaultGrid, gridDimensionsFor, tokenSize } from "./grid.ts";
 import type { AppearancePatch, ClientMessage, ErrorCode } from "./protocol.ts";
-import { NO_CONTROL, sameName } from "./permissions.ts";
+import { NO_CONTROL, playerKey, sameName } from "./permissions.ts";
 import { applyStatsPatch, cloneStats, defaultStats } from "./stats.ts";
 import type { ImageRef, TableMap, TableState, Token, TokenTemplate } from "./types.ts";
 
@@ -27,6 +27,30 @@ export type ReducerResult = { ok: true; state: TableState } | { ok: false; code:
 
 export const DEFAULT_TOKEN_COLOR = "#c0392b";
 
+/**
+ * A new token, from a template (an independent copy of its stats, size,
+ * colour, image and control) or blank. Its map and position are set by the
+ * caller.
+ *
+ * This is the one place where placed tokens get their starting values: a
+ * future "randomize ranges on placement" feature belongs here (with a random
+ * source added to ReducerContext so the reducer stays testable).
+ */
+export function newToken(tpl: TokenTemplate | null, ctx: ReducerContext, blankName: string): Token {
+  return {
+    id: ctx.newId(),
+    mapId: "",
+    templateId: tpl?.id ?? null,
+    col: 0,
+    row: 0,
+    size: tpl ? tpl.size : null,
+    color: tpl?.color ?? DEFAULT_TOKEN_COLOR,
+    image: tpl?.image ? { ...tpl.image } : null,
+    stats: tpl ? cloneStats(tpl.stats) : defaultStats(blankName),
+    control: structuredClone(tpl?.control ?? NO_CONTROL),
+  };
+}
+
 /** Columns and rows that fit in the map's background image with its current cell size and offset. */
 function dimensionsFromImage(map: TableMap): { cols: number; rows: number } {
   const g = map.grid;
@@ -34,7 +58,7 @@ function dimensionsFromImage(map: TableMap): { cols: number; rows: number } {
 }
 
 export function emptyState(): TableState {
-  return { rev: 0, activeMapId: null, maps: [], tokens: [], templates: [] };
+  return { rev: 0, maps: [], tokens: [], templates: [], playerMaps: {} };
 }
 
 class Rejected extends Error {
@@ -110,7 +134,6 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
         grid,
       };
       s.maps.push(map);
-      if (s.activeMapId === null) s.activeMapId = map.id;
       return;
     }
     case "map.rename":
@@ -120,12 +143,15 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
       find(s.maps, m.mapId, "map");
       s.maps = s.maps.filter((x) => x.id !== m.mapId);
       s.tokens = s.tokens.filter((t) => t.mapId !== m.mapId);
-      if (s.activeMapId === m.mapId) s.activeMapId = s.maps[0]?.id ?? null;
+      // Players who were on this map go back to the first map.
+      for (const [key, pm] of Object.entries(s.playerMaps)) if (pm.mapId === m.mapId) delete s.playerMaps[key];
       return;
     }
-    case "map.activate":
-      s.activeMapId = find(s.maps, m.mapId, "map").id;
+    case "player.setMap": {
+      const map = find(s.maps, m.mapId, "map");
+      s.playerMaps[playerKey(m.player)] = { name: m.player.trim(), mapId: map.id };
       return;
+    }
     case "map.setBackground": {
       const map = find(s.maps, m.mapId, "map");
       const bg = image(ctx, m.image);
@@ -161,19 +187,9 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
     case "token.create": {
       const map = find(s.maps, m.mapId, "map");
       const tpl = m.templateId ? find(s.templates, m.templateId, "template") : null;
-      const size = tpl ? tpl.size : null;
-      const cell = clampToGrid({ col: m.col, row: m.row }, map.grid, tokenSize({ size }, map.grid));
-      s.tokens.push({
-        id: ctx.newId(),
-        mapId: map.id,
-        templateId: tpl?.id ?? null,
-        ...cell,
-        size,
-        color: tpl?.color ?? DEFAULT_TOKEN_COLOR,
-        image: tpl?.image ? { ...tpl.image } : null,
-        stats: tpl ? cloneStats(tpl.stats) : defaultStats(`Token ${s.tokens.length + 1}`),
-        control: structuredClone(tpl?.control ?? NO_CONTROL),
-      });
+      const token = newToken(tpl, ctx, `Token ${s.tokens.length + 1}`);
+      Object.assign(token, { mapId: map.id }, clampToGrid({ col: m.col, row: m.row }, map.grid, tokenSize(token, map.grid)));
+      s.tokens.push(token);
       return;
     }
     case "token.move": {
@@ -187,6 +203,9 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
       applyAppearance(token, m.changes, ctx);
       const map = find(s.maps, token.mapId, "map");
       Object.assign(token, clampToGrid(token, map.grid, tokenSize(token, map.grid)));
+      // A unique template follows the edits made to its tokens.
+      const template = token.templateId ? s.templates.find((t) => t.id === token.templateId) : undefined;
+      if (template?.unique) applyAppearance(template, m.changes, ctx);
       return;
     }
     case "token.duplicate": {
@@ -214,12 +233,16 @@ function reduce(s: TableState, m: StateIntent, ctx: ReducerContext): void {
         image: src?.image ? { ...src.image } : null,
         stats,
         control: structuredClone(src?.control ?? NO_CONTROL),
+        unique: false,
       });
       return;
     }
-    case "template.update":
-      applyAppearance(find(s.templates, m.templateId, "template"), m.changes, ctx);
+    case "template.update": {
+      const template = find(s.templates, m.templateId, "template");
+      applyAppearance(template, m.changes, ctx);
+      if (m.changes.unique !== undefined) template.unique = m.changes.unique;
       return;
+    }
     case "template.delete":
       find(s.templates, m.templateId, "template");
       s.templates = s.templates.filter((t) => t.id !== m.templateId);

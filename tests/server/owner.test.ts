@@ -172,7 +172,7 @@ describe("server: players", () => {
 
     for (const msg of [
       { type: "map.create", name: "Mine" },
-      { type: "map.activate", mapId },
+      { type: "player.setMap", player: "Jane Doe", mapId },
       { type: "map.setGrid", mapId, grid: { visible: false } },
       { type: "token.create", mapId, col: 1, row: 1 },
       { type: "token.delete", tokenId },
@@ -202,19 +202,35 @@ describe("server: players", () => {
     await server.close();
   });
 
-  test("players follow the map the owner shows", async () => {
+  test("players start on the first map; the owner sends each one to a map individually", async () => {
     const server = await startTestServer(tmp.dir);
     const { client: gm } = await TestClient.joinOwner(server);
     await gm.apply({ type: "map.create", name: "Tavern" });
     const s = await gm.apply({ type: "map.create", name: "Dungeon" });
+    const dungeon = s.maps[1]!.id;
     const { client: jane, welcome } = await TestClient.join(server, "Jane Doe");
+    const { client: john } = await TestClient.join(server, "John Doe");
     assert.deepEqual(welcome.state.maps.map((m) => m.name), ["Tavern"]);
-    gm.send({ type: "map.activate", mapId: s.maps[1]!.id });
-    const view = (await jane.next("state")).state;
-    assert.deepEqual(view.maps.map((m) => m.name), ["Dungeon"]);
-    assert.equal(view.activeMapId, s.maps[1]!.id);
-    await gm.close();
+
+    gm.send({ type: "player.setMap", player: "Jane Doe", mapId: dungeon });
+    const janeView = (await jane.next("state")).state;
+    assert.deepEqual(janeView.maps.map((m) => m.name), ["Dungeon"]);
+    assert.deepEqual(janeView.playerMaps, {}, "players do not see the assignments");
+    assert.deepEqual((await john.next("state")).state.maps.map((m) => m.name), ["Tavern"], "John stays");
+
+    // The assignment is kept (by name) when Jane comes back, and survives a restart.
     await jane.close();
+    await gm.close();
+    await john.close();
     await server.close();
+    const server2 = await startTestServer(tmp.dir);
+    const { client: back, welcome: w2 } = await TestClient.join(server2, "jane doe");
+    assert.deepEqual(w2.state.maps.map((m) => m.name), ["Dungeon"]);
+
+    // Players cannot move themselves.
+    back.send({ type: "player.setMap", player: "jane doe", mapId: s.maps[0]!.id });
+    assert.equal((await back.next("error")).code, "forbidden");
+    await back.close();
+    await server2.close();
   });
 });

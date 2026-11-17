@@ -22,26 +22,27 @@ function run(ctx: ReducerContext, ...intents: StateIntent[]): TableState {
 }
 
 describe("reducer: maps", () => {
-  test("the first map becomes active; rev increases", () => {
+  test("maps are created in order; rev increases", () => {
     const s = run(context(), { type: "map.create", name: "Cave" }, { type: "map.create", name: "Forest" });
-    assert.equal(s.maps.length, 2);
-    assert.equal(s.activeMapId, "id1");
+    assert.deepEqual(s.maps.map((m) => m.name), ["Cave", "Forest"]);
     assert.equal(s.rev, 2);
   });
 
-  test("rename, activate, delete (which also deletes the map's tokens)", () => {
+  test("rename, send players to maps, delete (which also deletes the map's tokens)", () => {
     const ctx = context();
     let s = run(ctx, { type: "map.create", name: "Cave" }, { type: "map.create", name: "Forest" });
     s = must(applyIntent(s, { type: "token.create", mapId: "id1", col: 0, row: 0 }, ctx));
     s = must(applyIntent(s, { type: "map.rename", mapId: "id2", name: "Dark forest" }, ctx));
-    s = must(applyIntent(s, { type: "map.activate", mapId: "id2" }, ctx));
+    s = must(applyIntent(s, { type: "player.setMap", player: " Jane Doe ", mapId: "id1" }, ctx));
+    s = must(applyIntent(s, { type: "player.setMap", player: "JOHN DOE", mapId: "id2" }, ctx));
     assert.equal(s.maps[1]!.name, "Dark forest");
-    assert.equal(s.activeMapId, "id2");
+    assert.deepEqual(s.playerMaps, { "jane doe": { name: "Jane Doe", mapId: "id1" }, "john doe": { name: "JOHN DOE", mapId: "id2" } });
     s = must(applyIntent(s, { type: "map.delete", mapId: "id1" }, ctx));
     assert.deepEqual(s.maps.map((m) => m.id), ["id2"]);
     assert.equal(s.tokens.length, 0);
-    s = must(applyIntent(s, { type: "map.delete", mapId: "id2" }, ctx));
-    assert.equal(s.activeMapId, null);
+    assert.deepEqual(Object.keys(s.playerMaps), ["john doe"], "players of a deleted map go back to the first map");
+    const bad = applyIntent(s, { type: "player.setMap", player: "Jane Doe", mapId: "nope" }, ctx);
+    assert.equal(!bad.ok && bad.code, "not_found");
   });
 
   test("background sets the natural size and derives the grid", () => {

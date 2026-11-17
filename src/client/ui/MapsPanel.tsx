@@ -1,9 +1,13 @@
-/** Map list (create, rename, delete, activate), background upload and grid settings. */
+/**
+ * Map list (create, rename, delete; click a map to look at it, without moving
+ * the players), who is on each map, background upload and grid settings.
+ */
 import { subCellFeet } from "../../shared/grid.ts";
 import { LIMITS } from "../../shared/validate.ts";
 import type { TableMap } from "../../shared/types.ts";
 import type { Controller } from "../controller.ts";
-import type { ClientState } from "../store.ts";
+import { type ClientState, currentMap } from "../store.ts";
+import { knownPlayers } from "./PlayersPanel.tsx";
 import { ColorField, ImagePicker, NumberField, TextField } from "./fields.tsx";
 import { SizeSelect } from "./SizeSelect.tsx";
 
@@ -15,7 +19,8 @@ interface Props {
 export function MapsPanel({ app, state }: Props) {
   const table = state.table;
   if (!table) return null;
-  const active = table.maps.find((m) => m.id === table.activeMapId) ?? null;
+  const active = currentMap(state);
+  const players = knownPlayers(state);
 
   const create = (e: Event) => {
     e.preventDefault();
@@ -30,16 +35,20 @@ export function MapsPanel({ app, state }: Props) {
     <section class="panel maps-panel" data-testid="maps-panel">
       <h2>Maps</h2>
       <ul class="map-list">
-        {table.maps.map((m) => (
-          <li key={m.id} class={m.id === table.activeMapId ? "is-active" : ""} data-map-id={m.id}>
+        {table.maps.map((m, i) => (
+          <li key={m.id} class={m.id === active?.id ? "is-active" : ""} data-map-id={m.id}>
             <button
               type="button"
-              class="map-activate"
-              title="Show this map to everyone"
-              onClick={() => app.send({ type: "map.activate", mapId: m.id })}
+              class="map-view"
+              title={i === 0 ? "Look at this map (new players start here)" : "Look at this map (players stay where they are)"}
+              onClick={() => app.viewMap(m.id)}
             >
               {m.name}
+              {i === 0 && <span class="map-first" title="New players start on the first map"> ★</span>}
             </button>
+            <span class="map-player-count" title={players.filter((p) => p.mapId === m.id).map((p) => p.name).join(", ")}>
+              {players.filter((p) => p.mapId === m.id).length || ""}
+            </span>
             <button
               type="button"
               class="map-delete icon"
@@ -59,6 +68,18 @@ export function MapsPanel({ app, state }: Props) {
         <input name="mapName" placeholder="New map name" maxLength={LIMITS.nameLength} />
         <button type="submit">Add map</button>
       </form>
+      {active && players.length > 0 && (
+        <button
+          type="button"
+          class="bring-players"
+          title="Send every player to the map you are looking at"
+          onClick={() => {
+            for (const p of players) if (p.mapId !== active.id) app.send({ type: "player.setMap", player: p.name, mapId: active.id });
+          }}
+        >
+          Bring all players here
+        </button>
+      )}
       {active && <ActiveMapSettings app={app} map={active} calibrating={state.tool === "calibrate"} />}
     </section>
   );

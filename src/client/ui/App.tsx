@@ -3,9 +3,10 @@ import { Component } from "preact";
 import { isOwner } from "../../shared/permissions.ts";
 import { LIMITS } from "../../shared/validate.ts";
 import type { Controller } from "../controller.ts";
-import type { ClientState } from "../store.ts";
+import { type ClientState, currentMap } from "../store.ts";
 import { MapsPanel } from "./MapsPanel.tsx";
 import { MapToolbar } from "./MapToolbar.tsx";
+import { PlayersPanel } from "./PlayersPanel.tsx";
 import { MapView } from "./MapView.tsx";
 import { StatSheet } from "./StatSheet.tsx";
 import { TemplatesPanel } from "./TemplatesPanel.tsx";
@@ -15,7 +16,7 @@ export function App({ app, state }: { app: Controller; state: ClientState }) {
   const table = state.table;
   // Only the owner configures the table: maps, grid, templates.
   const owner = isOwner(state.me);
-  const activeMap = table?.maps.find((m) => m.id === table.activeMapId) ?? null;
+  const activeMap = currentMap(state);
 
   return (
     <div class="app">
@@ -67,14 +68,15 @@ export function App({ app, state }: { app: Controller; state: ClientState }) {
 }
 
 /**
- * The sidebar only depends on the table, the active tool and placing. Skipping
- * its re-render on other changes (pan, zoom, drag, ruler…) keeps the map smooth.
+ * The sidebar only depends on the table, the tool, placing, the viewed map and
+ * the users. Skipping its re-render on other changes (pan, zoom, drag,
+ * ruler…) keeps the map smooth.
  */
 class Sidebar extends Component<{ app: Controller; state: ClientState }> {
   override shouldComponentUpdate(next: { state: ClientState }): boolean {
     const a = this.props.state;
     const b = next.state;
-    return a.table !== b.table || a.tool !== b.tool || a.placing !== b.placing;
+    return a.table !== b.table || a.tool !== b.tool || a.placing !== b.placing || a.viewMapId !== b.viewMapId || a.users !== b.users;
   }
 
   render() {
@@ -82,6 +84,7 @@ class Sidebar extends Component<{ app: Controller; state: ClientState }> {
     return (
       <nav class="sidebar" data-testid="sidebar">
         <MapsPanel app={app} state={state} />
+        <PlayersPanel app={app} state={state} />
         <TemplatesPanel app={app} state={state} />
       </nav>
     );

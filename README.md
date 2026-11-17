@@ -9,7 +9,8 @@ very few dependencies, and tests for every feature.
 
 ## Features
 
-- **Maps**: several maps, one active map shown to everyone; a background image
+- **Maps**: several maps; the owner looks at any of them, and sends each
+  player to a map individually (players start on the first map); a background image
   per map (PNG, JPEG or WebP, up to 15 MiB, stored on the server by content hash).
 - **Grid**: cell width/height (non-square allowed) and X/Y offset with
   sub-pixel precision to align with the image, or **set it by marking two
@@ -26,8 +27,9 @@ very few dependencies, and tests for every feature.
 - **Ping**: show everyone a spot with an expanding, fading circle.
 - **Templates** ("monster/character models"): a library of templates with a
   stat sheet. Placing a template creates a token with its own copy of the stats.
-  Editing a token never changes its template; editing a template never changes
-  tokens already placed.
+  Editing a token never changes its template (unless the template is marked
+  **unique**: then edits to its tokens also update it, handy for named
+  characters); editing a template never changes tokens already placed.
 - **D&D 5e stat sheet** for tokens and templates: AC, HP (current/max/temp),
   speed, the six abilities with automatic modifiers, proficiency and initiative
   bonuses, conditions, notes. Edits sync live.
@@ -130,10 +132,15 @@ afterwards for non-square cells.
 |---|---|---|
 | joins with | the owner username **and** password | any other name, no password |
 | sidebar (maps, grid, templates) | yes | no |
-| which map is shown | chooses it (click a map in the list) | sees the map the owner shows |
+| which map is shown | looks at any map (click it in the list), without moving the players | starts on the first map; then sees the map the owner sent them to |
 | ruler, ping | yes | yes |
 | tokens | everything | moves and edits the tokens given to them; cannot create, delete, duplicate them or save them as templates |
 | HP and stat sheets | all tokens | only the tokens they control |
+
+To move players between maps, use the **Players** panel in the sidebar
+(one map per player; players who are offline keep their map for when they
+come back), or **Bring all players here** to send everyone to the map you are
+looking at. The first map in the list (★) is where new players start.
 
 To give a token to players, open its sheet (or a template's sheet, so that
 every token placed from it is given too) and use **Who can use it**: click a

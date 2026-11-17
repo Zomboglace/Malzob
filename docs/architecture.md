@@ -67,7 +67,8 @@ Message handling in `Table.receive`:
    back to the sender only
 6. on success: replace the state, schedule a save, and send each client
    `viewFor(state, user)`: the full state to the owner; to players, only the
-   active map, its tokens (stats blanked for tokens they do not control) and
+   map they were sent to (`playerMapId()`), its tokens (stats blanked for
+   tokens they do not control) and
    no templates
 
 ### `src/client/` — browser (Preact, SVG)
@@ -145,6 +146,21 @@ ruler is shared with the others through the ephemeral `ruler` message.
 
 The data directory is configurable with `DATA_DIR` and ignored by git.
 
+## Maps per player
+
+There is no single "active map". The owner's client shows whichever map the
+owner clicks (local state `viewMapId`). Each player sees one map:
+`TableState.playerMaps[playerKey(name)]` if the owner sent them somewhere,
+otherwise the first map of the list (`playerMapId()`). Assignments are keyed
+by display name and stored, so they survive reconnections and restarts.
+
+## Unique templates
+
+A template with `unique: true` stands for a single character: every
+`token.update` on a token placed from it applies the same changes to the
+template too (in the reducer), so placing it again, or on another map,
+starts from its latest state. Template edits still never change tokens.
+
 ## Roles, login and permissions
 
 - **Owner**: one account (`OwnerStore`), set up on the first start or by
@@ -167,8 +183,10 @@ The data directory is configurable with `DATA_DIR` and ignored by git.
 
 - **More roles or finer permissions** (co-GM, per-map access, hidden tokens):
   extend `Role`, `checkPermission` and `viewFor` in `src/shared/permissions.ts`.
-- **Owner preparing a map players do not see yet**: the owner's view could
-  have its own map choice (client-side), separate from `activeMapId`.
+- **Placement rules for templates** (e.g. randomizing stats within ranges when
+  a token is placed): all tokens are created by `newToken()` in
+  `src/shared/reducer.ts`; add the rule there, with a random source in
+  `ReducerContext` so the reducer stays pure and testable.
 - **Fog of war, walls, lighting, drawings**: add arrays to `TableMap` (or
   `TableState`), new intents in `protocol.ts` + `validate.ts` + `reducer.ts`,
   and new SVG layers in `MapView` between the background and the tokens.

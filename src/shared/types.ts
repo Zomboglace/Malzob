@@ -122,13 +122,29 @@ export interface TokenTemplate {
   stats: StatSheet;
   /** Copied to tokens placed from this template. */
   control: TokenControl;
+  /**
+   * A unique character or monster: editing any token placed from this
+   * template also applies the same changes to the template.
+   */
+  unique: boolean;
+}
+
+/** The map a player has been sent to by the owner. */
+export interface PlayerMap {
+  /** The player's display name, as the owner typed or saw it. */
+  name: string;
+  mapId: string;
 }
 
 /** The authoritative, persisted state of the table. */
 export interface TableState {
   /** Bumped on every accepted change. */
   rev: number;
-  activeMapId: string | null;
+  /**
+   * Which map each player sees, keyed by normalised player name (see
+   * `playerKey()`). Players not listed see the first map.
+   */
+  playerMaps: Record<string, PlayerMap>;
   maps: TableMap[];
   tokens: Token[];
   templates: TokenTemplate[];

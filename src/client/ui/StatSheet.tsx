@@ -8,7 +8,7 @@ import { ABILITY_LABELS, abilityModifier, CONDITIONS, formatModifier, type Stats
 import { ABILITIES, type Token, type TokenTemplate } from "../../shared/types.ts";
 import { LIMITS } from "../../shared/validate.ts";
 import type { Controller } from "../controller.ts";
-import type { ClientState, Selection } from "../store.ts";
+import { type ClientState, currentMap, type Selection } from "../store.ts";
 import { ColorField, ImagePicker, NotesField, NumberField, TextField } from "./fields.tsx";
 import { ControlEditor } from "./ControlEditor.tsx";
 import { SizeSelect } from "./SizeSelect.tsx";
@@ -35,9 +35,12 @@ export function StatSheet({ app, state, selection }: Props) {
   const stats = (patch: StatsPatch) => update({ stats: patch });
   const s = item.stats;
   const { stat, bonus, score } = LIMITS;
-  // Tokens follow their map's default size; templates follow the active map's.
-  const mapId = selection.kind === "token" ? (item as Token).mapId : table?.activeMapId;
+  // Tokens follow their map's default size; templates follow the map being viewed.
+  const mapId = selection.kind === "token" ? (item as Token).mapId : currentMap(state)?.id;
   const defaultSize = table?.maps.find((m) => m.id === mapId)?.grid.defaultTokenSize ?? 1;
+  // A token of a unique template: its edits also update the template (owner sees which one).
+  const uniqueTemplate =
+    selection.kind === "token" ? table?.templates.find((t) => t.id === (item as Token).templateId && t.unique) : undefined;
 
   return (
     <aside class="panel stat-sheet" data-testid="stat-sheet" data-kind={selection.kind} key={`${selection.kind}-${item.id}`}>
@@ -47,6 +50,23 @@ export function StatSheet({ app, state, selection }: Props) {
           ✕
         </button>
       </header>
+
+      {selection.kind === "template" && (
+        <label class="field field-check unique-toggle" title="Editing any token placed from this template also changes the template">
+          <input
+            type="checkbox"
+            name="unique"
+            checked={(item as TokenTemplate).unique}
+            onChange={(e) => app.send({ type: "template.update", templateId: item.id, changes: { unique: (e.currentTarget as HTMLInputElement).checked } })}
+          />
+          <span>Unique (edits to its tokens also update this template)</span>
+        </label>
+      )}
+      {uniqueTemplate && (
+        <p class="hint unique-hint" data-testid="unique-hint">
+          Unique: your edits also update the template “{uniqueTemplate.stats.name}”.
+        </p>
+      )}
 
       <TextField label="Name" name="name" value={s.name} onCommit={(name) => stats({ name })} />
 

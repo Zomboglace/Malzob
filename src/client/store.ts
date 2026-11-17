@@ -5,7 +5,7 @@
  */
 import type { MarkedCell, Point } from "../shared/grid.ts";
 import type { RulerLine } from "../shared/protocol.ts";
-import type { TableState, User } from "../shared/types.ts";
+import type { TableMap, TableState, User } from "../shared/types.ts";
 import type { View } from "./view.ts";
 
 export type ConnectionStatus = "idle" | "connecting" | "open" | "closed";
@@ -73,6 +73,17 @@ export interface ClientState {
   notice: string | null;
   /** Authorises image uploads; from `welcome`. */
   uploadToken: string | null;
+  /** The map the owner is looking at (local; players see the map they were sent to). */
+  viewMapId: string | null;
+}
+
+/**
+ * The map shown on this client: for the owner, the map they chose to look at
+ * (or the first one); for a player, the only map the server sends them.
+ */
+export function currentMap(state: ClientState): TableMap | null {
+  const maps = state.table?.maps ?? [];
+  return maps.find((m) => m.id === state.viewMapId) ?? maps[0] ?? null;
 }
 
 export function initialClientState(): ClientState {
@@ -94,6 +105,7 @@ export function initialClientState(): ClientState {
     sidebarCollapsed: false,
     notice: null,
     uploadToken: null,
+    viewMapId: null,
   };
 }
 

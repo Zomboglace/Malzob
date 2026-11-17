@@ -27,6 +27,8 @@ export interface Controller {
   setRuler(ruler: RulerLine | null): void;
   setCalibration(calibration: Calibration | null): void;
   toggleSidebar(): void;
+  /** Owner: look at another map (local; does not move the players). */
+  viewMap(mapId: string): void;
   /** Uploads an image; returns null (and shows a notice) on failure. */
   upload(file: Blob): Promise<ImageRef | null>;
   handleServerMessage(msg: ServerMessage): void;
@@ -130,6 +132,9 @@ export function createController({
     },
     setCalibration(calibration) {
       store.update({ calibration });
+    },
+    viewMap(viewMapId) {
+      store.update({ viewMapId, ruler: null, calibration: null, placing: null, selection: null });
     },
     toggleSidebar() {
       store.update((s) => ({ sidebarCollapsed: !s.sidebarCollapsed }));

@@ -36,7 +36,7 @@ describe("server: live sync between the owner and a player", () => {
     const [a, b] = await Promise.all([alice.next("state"), bob.next("state")]);
     assert.deepEqual(a.state, b.state);
     assert.equal(b.state.maps[0]!.name, "Goblin cave");
-    assert.equal(b.state.activeMapId, b.state.maps[0]!.id);
+
   });
 
   test("tokens placed and moved by the owner are seen by the player, without their stats", async () => {
